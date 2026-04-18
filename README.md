@@ -16,7 +16,7 @@
 |---|---|
 | 框架 | Next.js (App Router) — 前后端一体 |
 | 前端 | React + Vercel AI SDK (`useChat`) + TypeScript |
-| 加密 | `hpke-js` (RFC 9180) — X25519-HKDF-SHA256 + AES-256-GCM |
+| 加密 | `@noble/curves` (X25519) + `@noble/ciphers` (AES-256-GCM) + Web Crypto (HKDF-SHA256) |
 | 后端 | Next.js API Routes + Vercel AI SDK (`streamText`) |
 | LLM | 本地 qwen 模型 (OpenAI 兼容 API)，初始阶段用 mock |
 
@@ -228,8 +228,8 @@ nitro-enclave-demo/
 │   │
 │   ├── lib/
 │   │   ├── types.ts                 # 类型定义
-│   │   ├── enclave.ts               # Enclave 密钥管理（生成/读取 X25519 密钥对）
-│   │   ├── crypto.server.ts         # 服务端 HPKE 解密 + AES-GCM 响应加密
+│   │   ├── enclave.ts               # Enclave 密钥管理（持久化 X25519 密钥对）
+│   │   ├── crypto.ts                # HPKE 加解密（X25519 + AES-256-GCM，客户端/服务端共用）
 │   │   └── llm.ts                   # LLM 调用（mock → qwen）
 │   │
 │   └── components/
@@ -245,7 +245,7 @@ nitro-enclave-demo/
 |---|------|---------|
 | 1 | 项目初始化：create-next-app + 安装依赖 | `npm run dev` 白屏不报错 |
 | 2 | 密钥管理：服务端启动时生成 X25519 密钥对 | `curl /api/attestation` 返回公钥 |
-| 3 | 前端 HPKE 加密：用 hpke-js 加密测试文本 | 服务端能正确解密 |
+| 3 | 前端 HPKE 加密：用 @noble 加密测试文本 | 服务端能正确解密 |
 | 4 | 对话 UI：useChat + plain 模式跑通 | 能明文对话并显示 mock 回复 |
 | 5 | 端到端加密链路：前端加密 → 后端解密 → mock LLM → 加密响应 → 前端解密 | 整条链路完整跑通 |
 | 6 | Enclave 切换：`ENCLAVE_MODE=false` 时拒绝解密 | 前端显示不可信状态，发送加密请求返回错误 |

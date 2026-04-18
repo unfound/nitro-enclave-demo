@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useChat } from 'ai/react';
-import { sealAsync, decryptChunkFn, publicKeyFromBase64 } from '@/lib/crypto';
+import { sealAsync, decryptChunk, publicKeyFromBase64 } from '@/lib/crypto';
 import type { AttestationResponse, ChatMessage, EncryptedChunk } from '@/lib/types';
 
 interface Props {
@@ -98,7 +98,7 @@ export default function ChatPanel({ attestation }: Props) {
           if (!line.trim()) continue;
           try {
             const chunk: EncryptedChunk = JSON.parse(line);
-            const decrypted = decryptChunkFn(chunk, rk);
+            const decrypted = decryptChunk(chunk, rk);
             assistantContent += decrypted;
 
             setEncryptedMessages((prev) => {

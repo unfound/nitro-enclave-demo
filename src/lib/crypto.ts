@@ -17,19 +17,6 @@ import type { ChatMessage, EncryptedChunk } from './types';
 // ===================== Key Management =====================
 
 /**
- * Generate an X25519 keypair from 32 random bytes.
- * Returns raw byte arrays — no CryptoKey wrapper needed.
- */
-export function generateKeyPair(): {
-  publicKey: Uint8Array;
-  privateKey: Uint8Array;
-} {
-  const privateKey = randomBytes(32);
-  const publicKey = x25519.getPublicKey(privateKey);
-  return { publicKey, privateKey };
-}
-
-/**
  * Export public key as base64 string for transmission.
  */
 export function publicKeyToBase64(pk: Uint8Array): string {
@@ -204,7 +191,7 @@ export function encryptChunk(
 /**
  * Decrypt a single encrypted chunk (client reads from stream).
  */
-export function decryptChunkFn(
+export function decryptChunk(
   chunk: EncryptedChunk,
   responseKey: Uint8Array
 ): string {
