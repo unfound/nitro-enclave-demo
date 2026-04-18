@@ -1,9 +1,23 @@
 import type { Metadata } from 'next';
+import { Inter, JetBrains_Mono } from 'next/font/google';
 import './globals.css';
 
+const inter = Inter({
+  subsets: ['latin'],
+  variable: '--font-inter',
+  display: 'swap',
+});
+
+const jetbrainsMono = JetBrains_Mono({
+  subsets: ['latin'],
+  variable: '--font-mono',
+  display: 'swap',
+});
+
 export const metadata: Metadata = {
-  title: '机密医疗助手 — Nitro Enclave Demo',
-  description: '基于 AWS Nitro Enclave 机密计算的端到端加密医疗咨询助手',
+  title: 'Confidential Medical Assistant — Nitro Enclave Demo',
+  description:
+    'End-to-end encrypted medical consultation powered by AWS Nitro Enclave and HPKE',
 };
 
 export default function RootLayout({
@@ -12,7 +26,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="zh-CN">
+    <html lang="en" className={`${inter.variable} ${jetbrainsMono.variable}`}>
       <body>{children}</body>
     </html>
   );

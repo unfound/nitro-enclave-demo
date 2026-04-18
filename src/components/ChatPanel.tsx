@@ -19,7 +19,6 @@ export default function ChatPanel({ attestation }: Props) {
   const [input, setInput] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [responseKey, setResponseKey] = useState<Uint8Array | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Plain mode: useChat hook (SSE)
@@ -46,7 +45,7 @@ export default function ChatPanel({ attestation }: Props) {
   const handleEncryptedSubmit = useCallback(async () => {
     if (!input.trim() || isStreaming) return;
     if (!attestation?.trusted || !attestation.publicKey) {
-      setError('服务未在可信环境运行，无法加密发送');
+      setError('Environment not trusted — encryption unavailable');
       return;
     }
 
@@ -61,7 +60,6 @@ export default function ChatPanel({ attestation }: Props) {
       // 1. HPKE seal
       const serverPk = publicKeyFromBase64(attestation.publicKey);
       const { enc, ct, responseKey: rk } = await sealAsync(newMessages, serverPk);
-      setResponseKey(rk);
 
       // 2. POST encrypted request
       const response = await fetch('/api/chat', {
@@ -118,7 +116,7 @@ export default function ChatPanel({ attestation }: Props) {
         }
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : '加密通信失败');
+      setError(e instanceof Error ? e.message : 'Encryption failed');
       setEncryptedMessages((prev) => prev.slice(0, -1));
     } finally {
       setIsStreaming(false);
@@ -134,7 +132,6 @@ export default function ChatPanel({ attestation }: Props) {
       handlePlainInputChange({
         target: { value: input },
       } as React.ChangeEvent<HTMLInputElement>);
-      // Small delay to let useChat pick up the input
       setTimeout(() => handlePlainSubmit(e), 0);
     }
   };
@@ -156,45 +153,45 @@ export default function ChatPanel({ attestation }: Props) {
           className={`mode-btn ${mode === 'encrypted' ? 'active' : ''}`}
           onClick={() => setMode('encrypted')}
         >
-          🔒 机密模式 (HPKE)
+          Encrypted (HPKE)
         </button>
         <button
           className={`mode-btn ${mode === 'plain' ? 'active' : ''}`}
           onClick={() => setMode('plain')}
         >
-          📄 明文模式 (HTTP)
+          Plain Text (HTTP)
         </button>
       </div>
 
       {/* Error */}
-      {currentError && <div className="error-banner">⚠️ {currentError}</div>}
+      {currentError && <div className="error-banner">{currentError}</div>}
 
       {/* Messages */}
       <div className="messages">
         {messages.length === 0 && (
           <div className="empty-state">
-            <p>🏥 机密医疗助手</p>
+            <p>Start a consultation</p>
             <p className="empty-hint">
               {isEncrypted
-                ? '您的健康咨询将通过 HPKE 端到端加密传输'
-                : '明文模式 — 数据未加密，请勿输入真实敏感信息'}
+                ? 'Your consultation is end-to-end encrypted via HPKE before leaving your browser.'
+                : 'Plain text mode — data transmitted unencrypted.'}
             </p>
             <div className="suggestion-chips">
               <button
                 onClick={() =>
-                  setInput('我最近头疼、发烧38.5°、咳嗽有黄痰，持续3天了')
+                  setInput('I have a headache, fever at 38.5°C, and yellow phlegm for 3 days')
                 }
                 className="chip"
               >
-                💊 头疼发烧咨询
+                Fever consultation
               </button>
               <button
                 onClick={() =>
-                  setInput('我最近失眠很严重，每天只能睡3-4个小时')
+                  setInput('I have severe insomnia, only sleeping 3-4 hours per night')
                 }
                 className="chip"
               >
-                😴 失眠咨询
+                Insomnia consultation
               </button>
             </div>
           </div>
@@ -204,10 +201,10 @@ export default function ChatPanel({ attestation }: Props) {
           <div key={i} className={`message message-${msg.role}`}>
             <div className="message-header">
               <span className="message-role">
-                {msg.role === 'user' ? '👤 您' : '🤖 医疗助手'}
+                {msg.role === 'user' ? 'You' : 'Assistant'}
               </span>
               {isEncrypted && (
-                <span className="message-encrypt-badge">🔒 HPKE加密</span>
+                <span className="message-encrypt-badge">HPKE</span>
               )}
             </div>
             <div className="message-content">{msg.content}</div>
@@ -217,9 +214,9 @@ export default function ChatPanel({ attestation }: Props) {
         {isLoading && (
           <div className="message message-assistant">
             <div className="message-header">
-              <span className="message-role">🤖 医疗助手</span>
+              <span className="message-role">Assistant</span>
               {isEncrypted && (
-                <span className="message-encrypt-badge">🔒 HPKE加密</span>
+                <span className="message-encrypt-badge">HPKE</span>
               )}
             </div>
             <div className="message-content streaming-cursor">▊</div>
@@ -235,8 +232,8 @@ export default function ChatPanel({ attestation }: Props) {
           onChange={onInputChange}
           placeholder={
             isEncrypted
-              ? '🔒 输入健康问题 (将被加密传输)...'
-              : '📄 输入健康问题 (明文传输)...'
+              ? 'Describe your symptoms (encrypted)…'
+              : 'Describe your symptoms (plain text)…'
           }
           disabled={isLoading}
         />
@@ -244,11 +241,7 @@ export default function ChatPanel({ attestation }: Props) {
           type="submit"
           disabled={isLoading || !currentInput.trim()}
         >
-          {isLoading
-            ? '发送中...'
-            : isEncrypted
-              ? '🔒 加密发送'
-              : '发送'}
+          {isLoading ? 'Sending…' : isEncrypted ? 'Encrypt & Send' : 'Send'}
         </button>
       </form>
     </div>

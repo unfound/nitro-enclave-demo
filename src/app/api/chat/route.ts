@@ -33,7 +33,7 @@ async function handlePlain(body: ChatRequest) {
     return NextResponse.json(
       {
         error: 'ENCRYPTION_REQUIRED',
-        message: '当前运行在可信环境(Enclave)模式下，请使用加密通道发送请求',
+        message: 'Enclave mode active — encrypted channel required',
       },
       { status: 403 }
     );
@@ -55,7 +55,7 @@ async function handleEncrypted(
       {
         error: 'SERVICE_NOT_IN_ENCLAVE',
         message:
-          '服务未在可信执行环境中运行，无法处理加密数据。请将服务部署到 Nitro Enclave 中。',
+          'Service not in trusted execution environment — encrypted data cannot be processed.',
       } satisfies ChatErrorResponse,
       { status: 403 }
     );
@@ -100,7 +100,7 @@ async function handleEncrypted(
     return NextResponse.json(
       {
         error: 'DECRYPT_FAILED',
-        message: '解密失败：数据可能已损坏或密钥不匹配',
+        message: 'Decryption failed — data may be corrupted or keys mismatched',
       } satisfies ChatErrorResponse,
       { status: 400 }
     );

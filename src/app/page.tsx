@@ -9,31 +9,25 @@ export default function Home() {
   const [attestation, setAttestation] = useState<AttestationResponse | null>(
     null
   );
-  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     fetch('/api/attestation')
       .then((res) => res.json())
-      .then((data: AttestationResponse) => {
-        setAttestation(data);
-        setLoading(false);
-      })
-      .catch(() => {
-        setLoading(false);
-      });
+      .then((data: AttestationResponse) => setAttestation(data))
+      .catch(() => {});
   }, []);
 
   return (
     <main className="app">
       <header className="app-header">
-        <h1>🏥 机密医疗助手</h1>
+        <h1>Confidential Medical Assistant</h1>
         <p className="subtitle">
-          基于 AWS Nitro Enclave 机密计算 · HPKE 端到端加密
+          AWS Nitro Enclave · HPKE End-to-End Encryption
         </p>
       </header>
 
       <section className="attestation-section">
-        <AttestationBadge attestation={attestation} loading={loading} />
+        <AttestationBadge />
       </section>
 
       <section className="chat-section">
@@ -42,8 +36,8 @@ export default function Home() {
 
       <footer className="app-footer">
         <p>
-          ⚠️ 本应用为技术 Demo，不构成医疗建议。
-          真实场景中，敏感数据仅在可信执行环境(Nitro Enclave)中解密处理。
+          Technical demo — not medical advice.
+          In production, sensitive data is only decrypted inside Nitro Enclave.
         </p>
       </footer>
     </main>
