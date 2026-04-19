@@ -1,247 +1,262 @@
 'use client';
 
-import { useState, useRef, useEffect, useCallback } from 'react';
-import { useChat } from 'ai/react';
-import { sealAsync, decryptChunk, publicKeyFromBase64 } from '@/lib/crypto';
+import { useState, useRef, useEffect } from 'react';
+import { useLang } from './LanguageProvider';
+import { Shield, User, Bot } from 'lucide-react';
 import type { AttestationResponse, ChatMessage, EncryptedChunk } from '@/lib/types';
+import { sealAsync, decryptChunk, publicKeyFromBase64 } from '@/lib/crypto';
 
 interface Props {
   attestation: AttestationResponse | null;
 }
 
-type Mode = 'plain' | 'encrypted';
+type Mode = 'encrypted' | 'plain';
 
 export default function ChatPanel({ attestation }: Props) {
+  const { t } = useLang();
   const [mode, setMode] = useState<Mode>('encrypted');
-  const [encryptedMessages, setEncryptedMessages] = useState<
-    Array<{ role: 'user' | 'assistant'; content: string }>
-  >([]);
+  const [encryptedMessages, setEncryptedMessages] = useState<ChatMessage[]>([]);
+  const [plainMessages, setPlainMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
-  const [isStreaming, setIsStreaming] = useState(false);
+  const [streaming, setStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesEnd = useRef<HTMLDivElement>(null);
 
-  // Plain mode: useChat hook (SSE)
-  const {
-    messages: plainMessages,
-    input: plainInput,
-    handleInputChange: handlePlainInputChange,
-    handleSubmit: handlePlainSubmit,
-    isLoading: plainLoading,
-    error: plainError,
-  } = useChat({ api: '/api/chat' });
+  const canEncrypt = attestation?.trusted && attestation?.publicKey;
+  const messages = mode === 'encrypted' ? encryptedMessages : plainMessages;
+  const setMessages = mode === 'encrypted' ? setEncryptedMessages : setPlainMessages;
 
-  const isEncrypted = mode === 'encrypted';
-  const messages = isEncrypted ? encryptedMessages : plainMessages;
-  const isLoading = isEncrypted ? isStreaming : plainLoading;
-  const currentError = isEncrypted ? error : plainError?.message || null;
-
-  // Auto-scroll
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    messagesEnd.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // ---- Encrypted submit ----
-  const handleEncryptedSubmit = useCallback(async () => {
-    if (!input.trim() || isStreaming) return;
-    if (!attestation?.trusted || !attestation.publicKey) {
-      setError('Environment not trusted — encryption unavailable');
-      return;
-    }
+  async function handleSend(text: string) {
+    if (!text.trim() || streaming) return;
 
-    setError(null);
-    const userMessage: ChatMessage = { role: 'user', content: input.trim() };
-    const newMessages = [...encryptedMessages, userMessage];
-    setEncryptedMessages(newMessages);
+    const userMsg: ChatMessage = { role: 'user', content: text.trim() };
+    setMessages((prev) => [...prev, userMsg]);
     setInput('');
-    setIsStreaming(true);
+    setError(null);
+    setStreaming(true);
+
+    // Placeholder for assistant response
+    setMessages((prev) => [...prev, { role: 'assistant', content: '' }]);
 
     try {
-      // 1. HPKE seal
-      const serverPk = publicKeyFromBase64(attestation.publicKey);
-      const { enc, ct, responseKey: rk } = await sealAsync(newMessages, serverPk);
-
-      // 2. POST encrypted request
-      const response = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ encrypted: true, enc, ct }),
-      });
-
-      if (!response.ok) {
-        const errData = await response.json().catch(() => ({}));
-        throw new Error(errData.message || `HTTP ${response.status}`);
-      }
-
-      // 3. Read ndjson stream, decrypt each chunk
-      const reader = response.body!.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-      let assistantContent = '';
-
-      setEncryptedMessages((prev) => [
-        ...prev,
-        { role: 'assistant', content: '' },
-      ]);
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
-
-        for (const line of lines) {
-          if (!line.trim()) continue;
-          try {
-            const chunk: EncryptedChunk = JSON.parse(line);
-            const decrypted = decryptChunk(chunk, rk);
-            assistantContent += decrypted;
-
-            setEncryptedMessages((prev) => {
-              const updated = [...prev];
-              const last = updated[updated.length - 1];
-              if (last?.role === 'assistant') {
-                updated[updated.length - 1] = {
-                  ...last,
-                  content: assistantContent,
-                };
-              }
-              return updated;
-            });
-          } catch (e) {
-            console.error('Chunk decrypt error:', e);
-          }
-        }
+      if (mode === 'encrypted' && attestation?.publicKey) {
+        await sendEncrypted(userMsg);
+      } else {
+        await sendPlain(userMsg);
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Encryption failed');
-      setEncryptedMessages((prev) => prev.slice(0, -1));
+      const msg =
+        e instanceof Error && e.message === 'ENCLAVE_DECRYPT_FAILED'
+          ? t.chat.errorEnclave
+          : t.chat.errorGeneric;
+      setError(msg);
+      // Remove empty assistant message
+      setMessages((prev) => prev.slice(0, -1));
     } finally {
-      setIsStreaming(false);
+      setStreaming(false);
     }
-  }, [input, isStreaming, attestation, encryptedMessages]);
+  }
 
-  // ---- Unified submit ----
-  const onSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (isEncrypted) {
-      handleEncryptedSubmit();
-    } else {
-      handlePlainInputChange({
-        target: { value: input },
-      } as React.ChangeEvent<HTMLInputElement>);
-      setTimeout(() => handlePlainSubmit(e), 0);
+  async function sendPlain(userMsg: ChatMessage) {
+    const allMessages = [...messages.filter((m) => m.content), userMsg];
+    const res = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messages: allMessages }),
+    });
+
+    if (!res.ok) throw new Error('Request failed');
+
+    const reader = res.body!.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let accumulated = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+
+      const lines = buffer.split('\n');
+      buffer = lines.pop()!;
+
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        const data = line.slice(6);
+        if (data === '[DONE]') continue;
+
+        try {
+          const parsed = JSON.parse(data);
+          const text = parsed.choices?.[0]?.delta?.content;
+          if (text) {
+            accumulated += text;
+            updateLastMessage(accumulated);
+          }
+        } catch {
+          // skip non-JSON lines
+        }
+      }
     }
-  };
+  }
 
-  const onInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setInput(e.target.value);
-    if (!isEncrypted) {
-      handlePlainInputChange(e);
+  async function sendEncrypted(userMsg: ChatMessage) {
+    const allMessages = [...messages.filter((m) => m.content), userMsg];
+    const serverPk = publicKeyFromBase64(attestation!.publicKey!);
+    const { enc, ct, responseKey } = await sealAsync(allMessages, serverPk);
+
+    const res = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ encrypted: true, enc, ct }),
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => null);
+      if (err?.error === 'SERVICE_NOT_IN_ENCLAVE') {
+        throw new Error('ENCLAVE_DECRYPT_FAILED');
+      }
+      throw new Error('Request failed');
     }
-  };
 
-  const currentInput = isEncrypted ? input : plainInput;
+    const reader = res.body!.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let accumulated = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+
+      const lines = buffer.split('\n');
+      buffer = lines.pop()!;
+
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        try {
+          const chunk: EncryptedChunk = JSON.parse(line);
+          const text = decryptChunk(chunk, responseKey);
+          accumulated += text;
+          updateLastMessage(accumulated);
+        } catch {
+          // skip malformed chunks
+        }
+      }
+    }
+  }
+
+  function updateLastMessage(content: string) {
+    setMessages((prev) => {
+      const updated = [...prev];
+      if (updated.length > 0) {
+        updated[updated.length - 1] = {
+          ...updated[updated.length - 1],
+          content,
+        };
+      }
+      return updated;
+    });
+  }
+
+  function handleSuggestion(text: string) {
+    setInput(text);
+    handleSend(text);
+  }
+
+  const showEmpty = messages.length === 0;
 
   return (
     <div className="chat-panel">
-      {/* Mode toggle */}
+      {/* Mode Toggle */}
       <div className="mode-toggle">
         <button
           className={`mode-btn ${mode === 'encrypted' ? 'active' : ''}`}
           onClick={() => setMode('encrypted')}
         >
-          Encrypted (HPKE)
+          <Shield size={14} />
+          {t.chat.encryptedMode}
         </button>
         <button
           className={`mode-btn ${mode === 'plain' ? 'active' : ''}`}
           onClick={() => setMode('plain')}
         >
-          Plain Text (HTTP)
+          📄 {t.chat.plainMode}
         </button>
       </div>
 
-      {/* Error */}
-      {currentError && <div className="error-banner">{currentError}</div>}
+      {/* Error Banner */}
+      {error && <div className="error-banner">{error}</div>}
 
       {/* Messages */}
       <div className="messages">
-        {messages.length === 0 && (
+        {showEmpty ? (
           <div className="empty-state">
-            <p>Start a consultation</p>
-            <p className="empty-hint">
-              {isEncrypted
-                ? 'Your consultation is end-to-end encrypted via HPKE before leaving your browser.'
-                : 'Plain text mode — data transmitted unencrypted.'}
-            </p>
+            <p>{t.chat.emptyTitle}</p>
+            <p className="empty-hint">{t.chat.emptyHint}</p>
             <div className="suggestion-chips">
-              <button
-                onClick={() =>
-                  setInput('I have a headache, fever at 38.5°C, and yellow phlegm for 3 days')
-                }
-                className="chip"
-              >
-                Fever consultation
-              </button>
-              <button
-                onClick={() =>
-                  setInput('I have severe insomnia, only sleeping 3-4 hours per night')
-                }
-                className="chip"
-              >
-                Insomnia consultation
-              </button>
+              {t.chat.suggestions.map((s, i) => (
+                <button
+                  key={i}
+                  className="chip"
+                  onClick={() => handleSuggestion(s)}
+                >
+                  {s}
+                </button>
+              ))}
             </div>
           </div>
+        ) : (
+          <>
+            {messages.map((msg, i) => (
+              <div key={i} className={`message-row ${msg.role}`}>
+                <div className={`avatar ${msg.role === 'user' ? 'avatar-user' : 'avatar-assistant'}`}>
+                  {msg.role === 'user' ? <User size={16} /> : <Bot size={16} />}
+                </div>
+                <div className="message-group">
+                  <div className={`message message-${msg.role}`}>
+                    <div className="message-content">
+                      {msg.content || (streaming && i === messages.length - 1 ? (
+                        <span className="streaming-cursor">▊</span>
+                      ) : null)}
+                    </div>
+                  </div>
+                  {/* Encrypt badge below bubble */}
+                  {mode === 'encrypted' && (
+                    <div className="message-meta">
+                      <span className="message-encrypt-badge">
+                        <Shield size={10} />
+                        {t.chat.encrypted}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+            <div ref={messagesEnd} />
+          </>
         )}
-
-        {messages.map((msg, i) => (
-          <div key={i} className={`message message-${msg.role}`}>
-            <div className="message-header">
-              <span className="message-role">
-                {msg.role === 'user' ? 'You' : 'Assistant'}
-              </span>
-              {isEncrypted && (
-                <span className="message-encrypt-badge">HPKE</span>
-              )}
-            </div>
-            <div className="message-content">{msg.content}</div>
-          </div>
-        ))}
-
-        {isLoading && (
-          <div className="message message-assistant">
-            <div className="message-header">
-              <span className="message-role">Assistant</span>
-              {isEncrypted && (
-                <span className="message-encrypt-badge">HPKE</span>
-              )}
-            </div>
-            <div className="message-content streaming-cursor">▊</div>
-          </div>
-        )}
-        <div ref={messagesEndRef} />
       </div>
 
       {/* Input */}
-      <form onSubmit={onSubmit} className="chat-input">
+      <form
+        className="chat-input"
+        onSubmit={(e) => {
+          e.preventDefault();
+          handleSend(input);
+        }}
+      >
         <input
-          value={currentInput}
-          onChange={onInputChange}
-          placeholder={
-            isEncrypted
-              ? 'Describe your symptoms (encrypted)…'
-              : 'Describe your symptoms (plain text)…'
-          }
-          disabled={isLoading}
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          placeholder={t.chat.placeholder}
+          disabled={streaming}
         />
-        <button
-          type="submit"
-          disabled={isLoading || !currentInput.trim()}
-        >
-          {isLoading ? 'Sending…' : isEncrypted ? 'Encrypt & Send' : 'Send'}
+        <button type="submit" disabled={streaming || !input.trim()}>
+          {t.chat.send}
         </button>
       </form>
     </div>

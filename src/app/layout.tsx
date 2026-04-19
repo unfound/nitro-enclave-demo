@@ -15,9 +15,9 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'Confidential Medical Assistant — Nitro Enclave Demo',
+  title: '机密运动健康助手 — Nitro Enclave Demo',
   description:
-    'End-to-end encrypted medical consultation powered by AWS Nitro Enclave and HPKE',
+    '基于 AWS Nitro Enclave 机密计算的端到端加密运动健康咨询助手',
 };
 
 export default function RootLayout({

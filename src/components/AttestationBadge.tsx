@@ -1,26 +1,29 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useLang } from './LanguageProvider';
 import type { AttestationResponse } from '@/lib/types';
 
 export default function AttestationBadge() {
+  const { t } = useLang();
   const [data, setData] = useState<AttestationResponse | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState(false);
+  const [showDetails, setShowDetails] = useState(false);
 
   useEffect(() => {
     fetch('/api/attestation')
-      .then((r) => r.json())
-      .then(setData)
-      .catch((e) => setError(e.message));
+      .then((res) => res.json())
+      .then((d: AttestationResponse) => setData(d))
+      .catch(() => setError(true));
   }, []);
 
   if (error) {
     return (
       <div className="badge badge-error">
-        <span className="badge-icon">✕</span>
+        <span className="badge-icon">⚠️</span>
         <div className="badge-info">
-          <span className="badge-title">Connection failed</span>
-          <span className="badge-detail">{error}</span>
+          <span className="badge-title">{t.badge.error}</span>
+          <span className="badge-detail">{t.badge.errorDesc}</span>
         </div>
       </div>
     );
@@ -29,45 +32,43 @@ export default function AttestationBadge() {
   if (!data) {
     return (
       <div className="badge badge-loading">
-        <span className="badge-icon">◌</span>
+        <span className="badge-icon">⏳</span>
         <div className="badge-info">
-          <span className="badge-title">Verifying environment…</span>
-          <span className="badge-detail">Checking Nitro Enclave attestation</span>
+          <span className="badge-title">{t.badge.loading}</span>
+          <span className="badge-detail">{t.badge.loadingDesc}</span>
         </div>
       </div>
     );
   }
 
   const isTrusted = data.trusted;
+  const publicKeyShort = data.publicKey
+    ? `${data.publicKey.slice(0, 12)}...${data.publicKey.slice(-8)}`
+    : null;
 
   return (
     <div className={`badge ${isTrusted ? 'badge-trusted' : 'badge-untrusted'}`}>
-      <span className="badge-icon">
-        {isTrusted ? '✓' : '✕'}
-      </span>
+      <span className="badge-icon">{isTrusted ? '✅' : '❌'}</span>
       <div className="badge-info">
         <span className="badge-title">
-          {isTrusted
-            ? 'Trusted Environment — Nitro Enclave'
-            : 'Untrusted — Standard VM'}
+          {isTrusted ? t.badge.trusted : t.badge.untrusted}
         </span>
         <span className="badge-detail">
-          {isTrusted
-            ? 'HPKE decryption enabled. Your data is processed in an isolated enclave.'
-            : 'Decryption blocked. Sensitive data cannot be processed.'}
+          {isTrusted ? t.badge.trustedDesc : t.badge.untrustedDesc}
         </span>
-
-        {isTrusted && data.publicKey && (
-          <span className="badge-detail">
-            Public key: <code>{data.publicKey.slice(0, 16)}…</code>
-          </span>
-        )}
-
-        {data.attestation && (
-          <details className="badge-details">
-            <summary>Attestation details</summary>
-            <pre>{JSON.stringify(data.attestation, null, 2)}</pre>
-          </details>
+        {isTrusted && publicKeyShort && (
+          <div className="badge-details">
+            <summary onClick={() => setShowDetails(!showDetails)}>
+              {showDetails ? t.badge.hideDetails : t.badge.showDetails}
+            </summary>
+            {showDetails && data.attestation && (
+              <pre>
+                {t.badge.publicKey}: <code>{publicKeyShort}</code>
+                {'\n'}PCR0: {data.attestation.pcrs['0']?.slice(0, 24)}...
+                {'\n'}Module: {data.attestation.module_id}
+              </pre>
+            )}
+          </div>
         )}
       </div>
     </div>

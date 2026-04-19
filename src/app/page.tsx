@@ -1,11 +1,32 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { LanguageProvider, useLang } from '@/components/LanguageProvider';
 import AttestationBadge from '@/components/AttestationBadge';
 import ChatPanel from '@/components/ChatPanel';
 import type { AttestationResponse } from '@/lib/types';
 
-export default function Home() {
+function useCurrentTime() {
+  const [time, setTime] = useState('');
+
+  useEffect(() => {
+    function update() {
+      const now = new Date();
+      setTime(
+        `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
+      );
+    }
+    update();
+    const id = setInterval(update, 10000);
+    return () => clearInterval(id);
+  }, []);
+
+  return time;
+}
+
+function AppContent() {
+  const { t, toggleLang } = useLang();
+  const time = useCurrentTime();
   const [attestation, setAttestation] = useState<AttestationResponse | null>(
     null
   );
@@ -18,28 +39,52 @@ export default function Home() {
   }, []);
 
   return (
-    <main className="app">
-      <header className="app-header">
-        <h1>Confidential Medical Assistant</h1>
-        <p className="subtitle">
-          AWS Nitro Enclave · HPKE End-to-End Encryption
-        </p>
-      </header>
+    <div className="phone-wrapper">
+      <div className="phone-frame">
+        {/* Status Bar */}
+        <div className="status-bar">
+          <span className="left-icons">📶 📡</span>
+          <span className="right-icons">🔋 {time}</span>
+        </div>
 
-      <section className="attestation-section">
-        <AttestationBadge />
-      </section>
+        {/* App Content */}
+        <div className="app">
+          <header className="app-header">
+            <div className="app-header-row">
+              <h1>{t.app.title}</h1>
+              <button className="lang-toggle" onClick={toggleLang}>
+                {t.lang.switch}
+              </button>
+            </div>
+            <p className="subtitle">{t.app.subtitle}</p>
+          </header>
 
-      <section className="chat-section">
-        <ChatPanel attestation={attestation} />
-      </section>
+          <section className="attestation-section">
+            <AttestationBadge />
+          </section>
 
-      <footer className="app-footer">
-        <p>
-          Technical demo — not medical advice.
-          In production, sensitive data is only decrypted inside Nitro Enclave.
-        </p>
-      </footer>
-    </main>
+          <section className="chat-section">
+            <ChatPanel attestation={attestation} />
+          </section>
+
+          <footer className="app-footer">
+            <p>{t.app.footer}</p>
+          </footer>
+        </div>
+
+        {/* Home Indicator */}
+        <div className="home-indicator">
+          <div className="bar" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default function Home() {
+  return (
+    <LanguageProvider>
+      <AppContent />
+    </LanguageProvider>
   );
 }
