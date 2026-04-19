@@ -26,6 +26,13 @@ export default function ChatPanel({ attestation }: Props) {
   const messages = mode === 'encrypted' ? encryptedMessages : plainMessages;
   const setMessages = mode === 'encrypted' ? setEncryptedMessages : setPlainMessages;
 
+  // Attestation loaded and failed → force plain mode
+  useEffect(() => {
+    if (attestation && !attestation.trusted) {
+      setMode('plain');
+    }
+  }, [attestation]);
+
   useEffect(() => {
     messagesEnd.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
@@ -176,6 +183,7 @@ export default function ChatPanel({ attestation }: Props) {
         <button
           className={`mode-btn ${mode === 'encrypted' ? 'active' : ''}`}
           onClick={() => setMode('encrypted')}
+          disabled={!!attestation && !attestation.trusted}
         >
           <Shield size={14} />
           {t.chat.encryptedMode}

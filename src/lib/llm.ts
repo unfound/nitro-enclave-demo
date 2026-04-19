@@ -114,6 +114,40 @@ export async function* streamLLM(
  * Used directly with toDataStreamResponse().
  */
 export function getStreamTextResult(messages: ChatMessage[]) {
+  const lastUserMsg =
+    [...messages].reverse().find((m) => m.role === 'user')?.content || '';
+
+  if (USE_MOCK) {
+    const response = getMockResponse(lastUserMsg);
+    // Return a mock object with toDataStreamResponse() that emits
+    // SSE format compatible with our client parser.
+    return {
+      toDataStreamResponse() {
+        const encoder = new TextEncoder();
+        const stream = new ReadableStream({
+          async start(controller) {
+            const chars = response.split('');
+            for (const char of chars) {
+              const sseLine = `data: ${JSON.stringify({ choices: [{ delta: { content: char } }] })}\n\n`;
+              controller.enqueue(encoder.encode(sseLine));
+              await new Promise((r) => setTimeout(r, 15));
+            }
+            controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+            controller.close();
+          },
+        });
+
+        return new Response(stream, {
+          headers: {
+            'Content-Type': 'text/event-stream',
+            'Cache-Control': 'no-cache',
+            Connection: 'keep-alive',
+          },
+        });
+      },
+    };
+  }
+
   const { streamText } = require('ai');
 
   const coreMessages: CoreMessage[] = [
