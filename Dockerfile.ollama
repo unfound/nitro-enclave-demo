@@ -15,8 +15,8 @@ COPY models/Qwen3.5-0.8B-Q4_K_M.gguf /models/Qwen3.5-0.8B-Q4_K_M.gguf
 ENV LLAMA_ARG_MODEL=/models/Qwen3.5-0.8B-Q4_K_M.gguf
 ENV LLAMA_ARG_ALIAS=qwen3.5
 ENV LLAMA_API_KEY=not-needed
-ENV LLAMA_ARG_CTX_SIZE=1024
-ENV LLAMA_ARG_N_PREDICT=256
+# ENV LLAMA_ARG_CTX_SIZE=1024
+# ENV LLAMA_ARG_N_PREDICT=256
 # 关闭思考模式（Qwen3.5 默认开启思考，CPU 上会浪费大量 token 在 <think> 上）
 ENV LLAMA_ARG_REASONING=off
 
