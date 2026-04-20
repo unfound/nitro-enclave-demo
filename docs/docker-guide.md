@@ -118,62 +118,78 @@ CMD ["node", "server.js"]
 # 阶段 1：编译
 FROM node:20-slim AS builder
 WORKDIR /app
-COPY . .
+COPY . . 
 RUN npm run build
 
 # 阶段 2：运行（只拷贝编译产物，不带编译工具）
-FROM python:3.12-slim
+FROM node:20-slim
 COPY --from=builder /app/.next/standalone ./
 CMD ["node", "server.js"]
 ```
 
 **好处：** 最终镜像只包含运行时，不带编译器和源码，体积小很多。
 
-## 4. 本项目架构
+## 4. 本项目架构（Ollama Sidecar 模式）
 
 ```
-┌─────────────────────────── Docker Container ───────────────────────────┐
-│                                                                         │
-│  supervisord (进程管理器)                                                 │
-│    ├── llama-server  (:8080)  ← Qwen3.5-0.8B 模型推理                    │
-│    └── Next.js       (:3000)  ← Web 应用 + API                          │
-│                                                                         │
-│  前端浏览器 ──HTTP──→ :3000/api/chat ──内部调用──→ :8080/v1/chat           │
-│                                                                         │
-└─────────────────────────────────────────────────────────────────────────┘
+┌── docker-compose ──────────────────────────────────────────────┐
+│                                                                 │
+│  ┌───── ollama 容器 ─────┐    ┌───── app 容器 ─────┐            │
+│  │  Ollama + 模型(GGUF)  │    │  Next.js (Node.js) │            │
+│  │  :11434               │←───│  :3000             │            │
+│  │  (模型已打包在镜像内)    │    │  (纯 HTTP 调用)     │            │
+│  └───────────────────────┘    └────────────────────┘            │
+│                                                                 │
+│  前端浏览器 ──HTTP──→ :3000/api/chat ──HTTP──→ ollama:11434/v1   │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
-### 构建流程（4 个阶段）
+**两个独立容器：**
+- `ollama`: 模型推理服务（Ollama 官方镜像 + 本地 GGUF 打包）
+- `app`: Next.js Web 应用（纯 Node.js，零编译依赖）
+
+### 构建流程（各镜像独立构建）
 
 ```
-Stage 1: next-builder    编译 Next.js → standalone 产物
-Stage 2: node-src        提取 node 二进制
-Stage 3: llama-builder   编译 llama-cpp-python（需要 gcc/cmake）
-Stage 4: production      最终镜像：python:3.12-slim + node + 模型
+Dockerfile.ollama:
+  ollama/ollama → COPY GGUF 模型 → ollama create → 完成
+
+Dockerfile:
+  node:20-slim → npm ci → npm run build → COPY standalone → 完成
 ```
 
 ## 5. docker-compose.yml
 
-用 YAML 文件管理 `docker run` 的参数，不用每次手敲长命令：
+管理多个容器（ollama + app）一起启动：
 
 ```yaml
 services:
+  # Ollama 模型服务（模型已打包在镜像内）
+  ollama:
+    build:
+      context: .
+      dockerfile: Dockerfile.ollama
+    shm_size: "2g"
+
+  # Next.js 应用
   app:
     build:
-      context: .                    # 构建上下文（当前目录）
+      context: .
       dockerfile: Dockerfile
     ports:
-      - "3000:3000"                 # 宿主机端口:容器端口
+      - "3000:3000"
     environment:
-      - ENCLAVE_MODE=false
-      - USE_MOCK_LLM=false
-      - LLM_THREADS=4
-    restart: unless-stopped         # 崩溃自动重启
+      USE_MOCK_LLM: "false"
+      ENCLAVE_MODE: "false"
+      LLM_BASE_URL: "http://ollama:11434/v1"
+      LLM_MODEL: "qwen3.5"
+    depends_on:
+      - ollama
 ```
 
 ```bash
-# 启动
-docker compose up -d
+# 构建并启动（一条命令）
+docker compose up -d --build
 
 # 查看日志
 docker compose logs -f
@@ -181,8 +197,10 @@ docker compose logs -f
 # 停止
 docker compose down
 
-# 重新构建并启动
-docker compose up -d --build
+# 或用脚本
+./docker-build.sh          # 构建 + 启动
+./docker-build.sh build    # 只构建
+./docker-build.sh down     # 停止
 ```
 
 ## 6. 环境变量配置
@@ -191,10 +209,11 @@ docker compose up -d --build
 |------|--------|------|
 | `ENCLAVE_MODE` | `true` | `false` = 明文模式，`true` = 加密模式 |
 | `USE_MOCK_LLM` | `true` | `false` = 走真实模型 |
-| `LLM_BASE_URL` | `http://127.0.0.1:8080/v1` | 模型 API 地址 |
-| `LLM_MODEL` | `qwen3.5-0.8b` | 模型名称 |
-| `LLM_THREADS` | `4` | CPU 推理线程数 |
+| `LLM_BASE_URL` | `http://ollama:11434/v1` | Ollama API 地址（compose 内用服务名） |
+| `LLM_MODEL` | `qwen3.5` | 模型名称（对应 ollama create 时的名字） |
 | `SYSTEM_PROMPT` | 内置 | 自定义系统提示词 |
+
+> 旧变量 `LLM_THREADS` 已废弃（llama-server 线程数配置由 Ollama 管理）
 
 ## 7. 常见问题
 
