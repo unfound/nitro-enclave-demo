@@ -1,5 +1,4 @@
 services:
-  # 轻量级模型服务（Alpine + llama.cpp server，基础镜像仅 8.8MB）
   llm:
     build:
       context: .
@@ -11,7 +10,6 @@ services:
     #   - "8080:8080"
     restart: unless-stopped
 
-  # Next.js 应用
   app:
     build:
       context: .
@@ -21,7 +19,7 @@ services:
       - "3000:3000"
     environment:
       USE_MOCK_LLM: "false"
-      ENCLAVE_MODE: "true"
+      ENCLAVE_MODE: "false"
       LLM_BASE_URL: "http://llm:8080/v1"
       LLM_MODEL: "qwen3.5"
       SYSTEM_PROMPT: "你是一位专业的运动健康助手，擅长回答运动健康相关的问题，回答尽量简洁易懂。"
