@@ -1,0 +1,84 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nitro-enclave-demo
+  labels:
+    app: nitro-enclave-demo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nitro-enclave-demo
+  template:
+    metadata:
+      labels:
+        app: nitro-enclave-demo
+    spec:
+      containers:
+        - name: app
+          image: nitro-enclave-demo:latest
+          ports:
+            - containerPort: 3000
+              name: http
+          env:
+            # 核心开关
+            - name: ENCLAVE_MODE
+              value: "false"
+              # false → 明文模式（SSE）
+              # true  → 加密模式（要求客户端 HPKE）
+            - name: USE_MOCK_LLM
+              value: "false"
+              # true  → 内置假回复，无需模型
+              # false → 走真实模型（容器内自带 llama-server）
+
+            # 模型配置（容器内已有默认值，以下为显式声明）
+            - name: LLM_BASE_URL
+              value: "http://127.0.0.1:8080/v1"
+            - name: LLM_MODEL
+              value: "qwen3.5-0.8b"
+            - name: LLM_THREADS
+              value: "4"
+              # CPU 推理线程数，建议设为 pod 的 CPU request 值
+
+            # 可选：自定义系统提示词
+            # - name: SYSTEM_PROMPT
+            #   value: "你是一位专业的运动健康咨询助手..."
+
+            # 可选：外部模型（不走内置 llama-server）
+            # - name: LLM_BASE_URL
+            #   value: "http://your-llm-service:8000/v1"
+            # - name: LLM_MODEL
+            #   value: "qwen3.5-9b"
+          resources:
+            requests:
+              cpu: "2"
+              memory: "2Gi"
+            limits:
+              cpu: "4"
+              memory: "4Gi"
+              # 0.8B Q4 模型 ~500MB + Node.js + Python ≈ 需要 ~1.5Gi
+          readinessProbe:
+            httpGet:
+              path: /api/attestation
+              port: 3000
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /api/attestation
+              port: 3000
+            initialDelaySeconds: 30
+            periodSeconds: 30
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nitro-enclave-demo
+spec:
+  selector:
+    app: nitro-enclave-demo
+  ports:
+    - port: 80
+      targetPort: 3000
+      name: http
+  type: ClusterIP
