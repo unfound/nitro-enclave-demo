@@ -21,10 +21,10 @@ services:
       - "3000:3000"
     environment:
       USE_MOCK_LLM: "false"
-      ENCLAVE_MODE: "false"
+      ENCLAVE_MODE: "true"
       LLM_BASE_URL: "http://llm:8080/v1"
       LLM_MODEL: "qwen3.5"
-      SYSTEM_PROMPT: "你是一位专业的运动健康助手，擅长回答运动相关问题。"
+      SYSTEM_PROMPT: "你是一位专业的运动健康助手，擅长回答运动健康相关的问题，回答尽量简洁易懂。"
     depends_on:
       - llm
     restart: unless-stopped

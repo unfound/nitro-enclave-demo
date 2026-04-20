@@ -283,3 +283,74 @@ kubectl logs -f deployment/nitro-enclave-demo
 # 更新配置后重新部署
 kubectl rollout restart deployment/nitro-enclave-demo
 ```
+
+## 9. 磁盘清理
+
+### 概念：悬空镜像（Dangling Images）
+
+重新构建同名镜像时，旧版本的标签被新版本覆盖，旧镜像变成 `<none>:<none>` 的孤儿：
+
+```bash
+# 查看所有镜像（包括悬空的）
+docker images -a
+
+# 只看悬空镜像
+docker images -f "dangling=true"
+```
+
+```
+REPOSITORY     TAG       IMAGE ID       SIZE
+my-app         latest    abc123         500MB   ← 正常镜像
+<none>         <none>    def456         500MB   ← 悬空镜像（旧版，标签被覆盖）
+```
+
+### 安全清理命令
+
+```bash
+# 只清理悬空镜像（安全 ✅）
+docker image prune
+
+# 只清理停止的容器（安全 ✅）
+docker container prune
+
+# 只清理构建缓存（安全 ✅）
+docker builder prune
+
+# 只清理未使用的网络（安全 ✅）
+docker network prune
+
+# 只清理未使用的 volume（安全 ✅）
+docker volume prune
+```
+
+### 组合清理
+
+```bash
+# 清理所有未使用资源（⚠️ 不删除已有镜像）
+docker system prune
+
+# 清理所有未使用资源（💀 包括未使用的镜像，会删除一切）
+docker system prune -a
+```
+
+### 清理力度对比
+
+| 命令 | 清理内容 | 危险程度 |
+|------|----------|----------|
+| `docker image prune` | 悬空镜像 | 安全 ✅ |
+| `docker container prune` | 停止的容器 | 安全 ✅ |
+| `docker builder prune` | 构建缓存/中间层 | 安全 ✅ |
+| `docker network prune` | 未使用的网络 | 安全 ✅ |
+| `docker volume prune` | 未使用的卷 | 安全 ✅ |
+| `docker system prune` | 以上全清 | 低危 ⚠️ |
+| `docker system prune -a` | 全部清空（含镜像） | 危险 💀 |
+
+### 查看占用空间
+
+```bash
+# 查看各类型资源占用
+docker system df
+
+# 查看详细（包括悬空镜像）
+docker system df -v
+```
