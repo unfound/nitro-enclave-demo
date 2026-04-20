@@ -1,15 +1,14 @@
 services:
-  # Ollama 模型服务（模型已打包在镜像内）
-  ollama:
+  # 轻量级模型服务（Alpine + llama.cpp server，基础镜像仅 8.8MB）
+  llm:
     build:
       context: .
       dockerfile: Dockerfile.ollama
-    container_name: ollama
+    container_name: nitro-enclave-llm
     shm_size: "2g"
-    # 不暴露端口到宿主机，只给 app 内部访问
     # 如需外部调试，取消下面注释:
     # ports:
-    #   - "11434:11434"
+    #   - "8080:8080"
     restart: unless-stopped
 
   # Next.js 应用
@@ -23,11 +22,9 @@ services:
     environment:
       USE_MOCK_LLM: "false"
       ENCLAVE_MODE: "false"
-      LLM_BASE_URL: "http://ollama:11434/v1"
+      LLM_BASE_URL: "http://llm:8080/v1"
       LLM_MODEL: "qwen3.5"
       SYSTEM_PROMPT: "你是一位专业的运动健康助手，擅长回答运动相关问题。"
-      # 按需覆盖:
-      # LLM_API_KEY: "not-needed"
     depends_on:
-      - ollama
+      - llm
     restart: unless-stopped

@@ -15,19 +15,19 @@ spec:
         app: nitro-enclave-demo
     spec:
       containers:
-        # Ollama 模型服务（模型已打包在镜像内）
-        - name: ollama
-          image: nitro-enclave-ollama:latest
+        # 轻量级模型服务（Alpine + llama.cpp server）
+        - name: llm
+          image: nitro-enclave-llm:latest
           ports:
-            - containerPort: 11434
-              name: ollama-api
+            - containerPort: 8080
+              name: llm-api
           resources:
             requests:
               cpu: "2"
-              memory: "2Gi"
+              memory: "1.5Gi"
             limits:
               cpu: "4"
-              memory: "4Gi"
+              memory: "3Gi"
 
         # Next.js 应用
         - name: app
@@ -41,12 +41,9 @@ spec:
             - name: USE_MOCK_LLM
               value: "false"
             - name: LLM_BASE_URL
-              value: "http://localhost:11434/v1"
+              value: "http://localhost:8080/v1"
             - name: LLM_MODEL
               value: "qwen3.5"
-            # 可选：自定义系统提示词
-            # - name: SYSTEM_PROMPT
-            #   value: "你是一位专业的运动健康咨询助手..."
           resources:
             requests:
               cpu: "1"
