@@ -1,0 +1,19 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        LLAMA_CPP_VERSION: b8516
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - LLM_BASE_URL=http://127.0.0.1:8080/v1
+      - LLM_MODEL=qwen3.5-0.8b
+      - USE_MOCK_LLM=false
+      - LLM_THREADS=4
+      # Enclave keypair (mount or pass via env)
+      # - ENCLAVE_MODE=true
+      # - ENCLAVE_PRIVATE_KEY=...
+    restart: unless-stopped
