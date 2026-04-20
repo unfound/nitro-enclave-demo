@@ -15,40 +15,12 @@ spec:
         app: nitro-enclave-demo
     spec:
       containers:
-        - name: app
-          image: nitro-enclave-demo:latest
+        # Ollama 模型服务（模型已打包在镜像内）
+        - name: ollama
+          image: nitro-enclave-ollama:latest
           ports:
-            - containerPort: 3000
-              name: http
-          env:
-            # 核心开关
-            - name: ENCLAVE_MODE
-              value: "false"
-              # false → 明文模式（SSE）
-              # true  → 加密模式（要求客户端 HPKE）
-            - name: USE_MOCK_LLM
-              value: "false"
-              # true  → 内置假回复，无需模型
-              # false → 走真实模型（容器内自带 llama-server）
-
-            # 模型配置（容器内已有默认值，以下为显式声明）
-            - name: LLM_BASE_URL
-              value: "http://127.0.0.1:8080/v1"
-            - name: LLM_MODEL
-              value: "qwen3.5-0.8b"
-            - name: LLM_THREADS
-              value: "4"
-              # CPU 推理线程数，建议设为 pod 的 CPU request 值
-
-            # 可选：自定义系统提示词
-            # - name: SYSTEM_PROMPT
-            #   value: "你是一位专业的运动健康咨询助手..."
-
-            # 可选：外部模型（不走内置 llama-server）
-            # - name: LLM_BASE_URL
-            #   value: "http://your-llm-service:8000/v1"
-            # - name: LLM_MODEL
-            #   value: "qwen3.5-9b"
+            - containerPort: 11434
+              name: ollama-api
           resources:
             requests:
               cpu: "2"
@@ -56,7 +28,32 @@ spec:
             limits:
               cpu: "4"
               memory: "4Gi"
-              # 0.8B Q4 模型 ~500MB + Node.js + Python ≈ 需要 ~1.5Gi
+
+        # Next.js 应用
+        - name: app
+          image: nitro-enclave-app:latest
+          ports:
+            - containerPort: 3000
+              name: http
+          env:
+            - name: ENCLAVE_MODE
+              value: "false"
+            - name: USE_MOCK_LLM
+              value: "false"
+            - name: LLM_BASE_URL
+              value: "http://localhost:11434/v1"
+            - name: LLM_MODEL
+              value: "qwen3.5"
+            # 可选：自定义系统提示词
+            # - name: SYSTEM_PROMPT
+            #   value: "你是一位专业的运动健康咨询助手..."
+          resources:
+            requests:
+              cpu: "1"
+              memory: "512Mi"
+            limits:
+              cpu: "2"
+              memory: "1Gi"
           readinessProbe:
             httpGet:
               path: /api/attestation

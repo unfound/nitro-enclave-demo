@@ -1,47 +1,51 @@
 #!/bin/bash
-# Docker 多架构构建脚本
+# 构建并运行 - Ollama sidecar 版本
+#
+# 用法:
+#   ./docker-build.sh          # 构建 + 启动
+#   ./docker-build.sh build    # 只构建
+#   ./docker-build.sh up       # 只启动（已构建的情况下）
+#   ./docker-build.sh down     # 停止
+
 set -e
 
-IMAGE_NAME="${IMAGE_NAME:-nitro-enclave-demo}"
-IMAGE_TAG="${IMAGE_TAG:-latest}"
-REGISTRY="${REGISTRY:-}"  # e.g. "registry.cn-hangzhou.aliyuncs.com/your-ns/"
-PLATFORMS="${PLATFORMS:-}"
+cd "$(dirname "$0")"
+PROJECT="nitro-enclave"
 
-# ---- 下载模型（如不存在） ----
-MODEL_FILE="models/Qwen3.5-0.8B-Q4_K_M.gguf"
-if [ ! -f "$MODEL_FILE" ]; then
-    echo ">>> 模型不存在，先下载..."
-    bash models/download-model.sh
-fi
-
-# ---- 构建模式 ----
-if [ -n "$PLATFORMS" ]; then
-    # 多平台构建（需要 buildx）
-    FULL_IMAGE="${REGISTRY}${IMAGE_NAME}:${IMAGE_TAG}"
-    echo ">>> 多平台构建: $PLATFORMS"
-    echo ">>> 镜像: $FULL_IMAGE"
-
-    docker buildx create --name multiarch --use 2>/dev/null || docker buildx use multiarch
-
-    docker buildx build \
-        --platform "$PLATFORMS" \
-        -t "$FULL_IMAGE" \
-        ${PUSH:+--push} \
-        ${LOAD:+--load} \
-        .
-else
-    # 单平台构建（当前架构）
-    FULL_IMAGE="${REGISTRY}${IMAGE_NAME}:${IMAGE_TAG}"
-    ARCH=$(uname -m)
-    echo ">>> 单平台构建: $ARCH"
-    echo ">>> 镜像: $FULL_IMAGE"
-
-    docker build -t "$FULL_IMAGE" .
-
-    if [ -n "$REGISTRY" ]; then
-        echo ">>> 推送到 $REGISTRY..."
-        docker push "$FULL_IMAGE"
-    fi
-fi
-
-echo ">>> 完成! $FULL_IMAGE"
+case "${1:-all}" in
+  build)
+    echo "🔨 构建镜像..."
+    sudo docker compose build
+    echo "✅ 构建完成"
+    ;;
+  up)
+    echo "🚀 启动服务..."
+    sudo docker compose up -d
+    echo "✅ 已启动"
+    echo "   App:    http://localhost:3000"
+    echo "   Ollama: http://localhost:11434 (需取消 docker-compose 注释)"
+    ;;
+  down)
+    echo "🛑 停止服务..."
+    sudo docker compose down
+    echo "✅ 已停止"
+    ;;
+  all)
+    echo "🔨 构建镜像..."
+    sudo docker compose build
+    echo "🚀 启动服务..."
+    sudo docker compose up -d
+    echo ""
+    echo "✅ 完成！"
+    echo "   App: http://localhost:3000"
+    echo ""
+    echo "   等待模型加载（约 15 秒后测试）:"
+    echo "   curl -s -X POST http://localhost:3000/api/chat \\"
+    echo "     -H 'Content-Type: application/json' \\"
+    echo "     -d '{\"messages\":[{\"role\":\"user\",\"content\":\"你好\"}]}'"
+    ;;
+  *)
+    echo "用法: $0 [build|up|down|all]"
+    exit 1
+    ;;
+esac

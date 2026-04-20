@@ -1,0 +1,4 @@
+FROM /models/Qwen3.5-0.8B-Q4_K_M.gguf
+SYSTEM "你是一位专业的运动健康助手，擅长回答运动相关问题。"
+PARAMETER num_ctx 2048
+PARAMETER temperature 0.7

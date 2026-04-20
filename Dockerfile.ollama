@@ -1,0 +1,23 @@
+# Dockerfile.ollama - Ollama + 模型打包成一体化镜像
+#
+# 构建: docker build -f Dockerfile.ollama -t nitro-enclave-ollama .
+# 启动后模型已就绪，不需要再 pull
+
+ARG REGISTRY=docker.1ms.run/
+FROM ${REGISTRY}ollama/ollama:latest
+
+# 把本地 GGUF 模型和 Modelfile COPY 进镜像
+COPY models/Qwen3.5-0.8B-Q4_K_M.gguf /models/Qwen3.5-0.8B-Q4_K_M.gguf
+COPY models/Modelfile /models/Modelfile
+
+# 构建时预注册模型（关键！启动后直接 serve，不用再 create）
+RUN /bin/ollama serve & \
+    sleep 3 && \
+    ollama create qwen3.5 -f /models/Modelfile && \
+    kill %1
+
+# 暴露 Ollama API 端口
+EXPOSE 11434
+
+# 启动 ollama（模型已在镜像内）
+CMD ["ollama", "serve"]
