@@ -1,0 +1,57 @@
+# Dockerfile.backend - Go backend with TPM support
+#
+# Multi-stage build:
+#   Stage 1: builder (compiles the binary)
+#   Stage 2: production image (minimal, static binary)
+#
+# Build: docker build -f Dockerfile.backend -t backend-tpm .
+# Run:   docker run --device=/dev/tpm0:/dev/tpm0 -p 8000:8000 backend-tpm
+
+# ── Stage 1: Builder ────────────────────────────────────────────
+FROM golang:1.23-alpine AS builder
+
+# Install build dependencies (for cgo if needed later, currently pure Go)
+RUN apk add --no-cache gcc musl-dev
+
+WORKDIR /build
+
+# Copy go mod files first (for cache)
+COPY backend/go.mod backend/go.sum ./
+RUN go mod download
+
+# Copy source and build
+COPY backend/ ./
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o backend .
+
+# ── Stage 2: Production image ──────────────────────────────────
+FROM alpine:3.19
+
+RUN apk add --no-cache ca-certificates tzdata
+
+WORKDIR /app
+
+# Copy binary from builder
+COPY --from=builder /build/backend .
+
+# Default env vars
+ENV PORT=8000
+ENV TPM_DEVICE=/dev/tpm0
+ENV KEY_PATH=/var/lib/backend/enclave-key.json
+ENV LLM_BASE_URL=http://localhost:8001
+ENV LLM_MODEL=qwen3.5
+
+# PCR indices to read (comma-separated), e.g. "1,4,7"
+# Leave empty or set to "mock" for demo mode (no TPM needed)
+ENV PCR_INDICES=
+
+# Golden PCR baseline, format "1:sha256:abc...,4:sha256:def..."
+# Optional — frontend always checks; backend can also check
+ENV PCR_GOLDEN_BASELINE=
+
+EXPOSE 8000
+
+# Non-root for security
+RUN addgroup -S backend && adduser -S backend -G backend
+USER backend
+
+CMD ["./backend"]
