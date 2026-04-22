@@ -11,7 +11,6 @@ import (
 )
 
 // ReadPCRs reads the specified PCR indices and returns a map of index -> "algo:value".
-// It tries go-tpm-tools client first, falls back to raw tpm2 commands.
 func ReadPCRs(indices []int) (map[string]string, error) {
 	path := os.Getenv("TPM_DEVICE")
 	if path == "" {
@@ -37,22 +36,26 @@ func ReadPCRs(indices []int) (map[string]string, error) {
 }
 
 func readPCRSingle(rwc io.ReadWriteCloser, pcrIndex int) (string, error) {
-	// Try go-tpm-tools client first
-	pcrs, err := client.ReadPCRs(rwc, client.HashAlgoSHA256)
-	if err == nil && len(pcrs) > 0 {
-		if val, ok := pcrs[pcrIndex]; ok {
+	// Use go-tpm-tools client
+	sel := tpm2.PCRSelection{
+		Hash: tpm2.AlgSHA256,
+		PCRs: []int{pcrIndex},
+	}
+	pcrs, err := client.ReadPCRs(rwc, sel)
+	if err == nil && len(pcrs.Pcrs) > 0 {
+		if val, ok := pcrs.Pcrs[uint32(pcrIndex)]; ok {
 			return "sha256:" + hex.EncodeToString(val), nil
 		}
 	}
 
 	// Fallback: raw tpm2 command
-	sel := tpm2.PCRSelection{
+	sel2 := tpm2.PCRSelection{
 		Hash: tpm2.AlgSHA256,
 		PCRs: []int{pcrIndex},
 	}
-	val, err := tpm2.ReadPCR(rwc, uint32(pcrIndex), &sel)
+	val, err := tpm2.ReadPCRs(rwc, sel2)
 	if err != nil {
-		return "", fmt.Errorf("tpm2.ReadPCR: %w", err)
+		return "", fmt.Errorf("tpm2.ReadPCRs: %w", err)
 	}
-	return "sha256:" + hex.EncodeToString(val), nil
+	return "sha256:" + hex.EncodeToString(val[pcrIndex]), nil
 }

@@ -3,14 +3,30 @@
 import { useState, useRef, useEffect } from 'react';
 import { useLang } from './LanguageProvider';
 import { Shield, User, Bot } from 'lucide-react';
-import type { AttestationResponse, ChatMessage, EncryptedChunk } from '@/lib/types';
-import { sealAsync, decryptChunk, publicKeyFromBase64 } from '@/lib/crypto';
+import type {
+  AttestationResponse,
+  ChatMessage,
+  EncryptedChunk,
+  KeyExchangeResponse,
+} from '@/lib/types';
+import {
+  generateClientKeyPair,
+  encryptWithResponseKey,
+  decryptWithResponseKey,
+  hexToBytes,
+  combineIVAndCiphertext,
+} from '@/lib/crypto';
 
 interface Props {
   attestation: AttestationResponse | null;
 }
 
 type Mode = 'encrypted' | 'plain';
+
+interface EncryptedSession {
+  sessionId: string;    // hex
+  responseKey: Uint8Array;
+}
 
 export default function ChatPanel({ attestation }: Props) {
   const { t } = useLang();
@@ -20,6 +36,7 @@ export default function ChatPanel({ attestation }: Props) {
   const [input, setInput] = useState('');
   const [streaming, setStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [session, setSession] = useState<EncryptedSession | null>(null);
   const messagesEnd = useRef<HTMLDivElement>(null);
 
   const canEncrypt = attestation?.trusted && attestation?.publicKey;
@@ -37,6 +54,32 @@ export default function ChatPanel({ attestation }: Props) {
     messagesEnd.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  // ── Key Exchange ────────────────────────────────────────────
+  async function ensureSession(): Promise<EncryptedSession> {
+    if (session) return session;
+
+    const { clientSK, clientPK } = generateClientKeyPair();
+    const clientPkBase64 = btoa(String.fromCharCode(...clientPK));
+
+    const keRes = await fetch('/api/key-exchange', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ clientPublicKey: clientPkBase64 }),
+    });
+
+    if (!keRes.ok) {
+      throw new Error('Key exchange failed');
+    }
+
+    const ke: KeyExchangeResponse = await keRes.json();
+    const newSession: EncryptedSession = {
+      sessionId: ke.sessionId,
+      responseKey: hexToBytes(ke.responseKey),
+    };
+    setSession(newSession);
+    return newSession;
+  }
+
   async function handleSend(text: string) {
     if (!text.trim() || streaming) return;
 
@@ -50,7 +93,7 @@ export default function ChatPanel({ attestation }: Props) {
     setMessages((prev) => [...prev, { role: 'assistant', content: '' }]);
 
     try {
-      if (mode === 'encrypted' && attestation?.publicKey) {
+      if (mode === 'encrypted') {
         await sendEncrypted(userMsg);
       } else {
         await sendPlain(userMsg);
@@ -61,7 +104,6 @@ export default function ChatPanel({ attestation }: Props) {
           ? t.chat.errorEnclave
           : t.chat.errorGeneric;
       setError(msg);
-      // Remove empty assistant message
       setMessages((prev) => prev.slice(0, -1));
     } finally {
       setStreaming(false);
@@ -112,13 +154,21 @@ export default function ChatPanel({ attestation }: Props) {
 
   async function sendEncrypted(userMsg: ChatMessage) {
     const allMessages = [...messages.filter((m) => m.content), userMsg];
-    const serverPk = publicKeyFromBase64(attestation!.publicKey!);
-    const { enc, ct, responseKey } = await sealAsync(allMessages, serverPk);
+
+    // Key exchange (cached after first call)
+    const sess = await ensureSession();
+
+    // Encrypt all messages as a single JSON string
+    const plaintext = JSON.stringify(allMessages);
+    const { iv, ct } = await encryptWithResponseKey(sess.responseKey, plaintext);
+
+    // Combine IV + ciphertext into single ct (backend expects base64(IV || ciphertext))
+    const combinedCt = combineIVAndCiphertext(iv, ct);
 
     const res = await fetch('/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ encrypted: true, enc, ct }),
+      body: JSON.stringify({ encrypted: true, sessionId: sess.sessionId, ct: combinedCt }),
     });
 
     if (!res.ok) {
@@ -146,7 +196,7 @@ export default function ChatPanel({ attestation }: Props) {
         if (!line.trim()) continue;
         try {
           const chunk: EncryptedChunk = JSON.parse(line);
-          const text = decryptChunk(chunk, responseKey);
+          const text = await decryptWithResponseKey(sess.responseKey, chunk.iv, chunk.ct);
           accumulated += text;
           updateLastMessage(accumulated);
         } catch {
@@ -232,7 +282,6 @@ export default function ChatPanel({ attestation }: Props) {
                       ) : null)}
                     </div>
                   </div>
-                  {/* Encrypt badge below bubble */}
                   {mode === 'encrypted' && (
                     <div className="message-meta">
                       <span className="message-encrypt-badge">

@@ -14,6 +14,19 @@ export interface AttestationResponse {
   attestation: AttestationDoc | null;
 }
 
+// === Key Exchange ===
+
+export interface KeyExchangeRequest {
+  clientPublicKey: string; // base64 ephemeral X25519 public key
+}
+
+export interface KeyExchangeResponse {
+  sessionId: string;      // hex
+  enc: string;            // base64 ephemeral public key (same as sent)
+  responseKey: string;    // hex 32-byte key for chat encryption/decryption
+  serverPublicKey: string; // base64 server static public key
+}
+
 // === Chat API Types ===
 
 export interface PlainChatRequest {
@@ -23,8 +36,8 @@ export interface PlainChatRequest {
 
 export interface EncryptedChatRequest {
   encrypted: true;
-  enc: string; // base64 encapsulated key (ephemeral public key)
-  ct: string;  // base64 [IV][ciphertext+tag]
+  sessionId: string; // hex from /key-exchange
+  ct: string;        // base64 IV(12) || ciphertext
 }
 
 export type ChatRequest = PlainChatRequest | EncryptedChatRequest;

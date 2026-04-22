@@ -1,87 +1,49 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getEnclaveKeyPair, isEnclaveMode } from '@/lib/enclave';
-import { openAsync, encryptChunk } from '@/lib/crypto';
-import { streamLLM } from '@/lib/llm';
-import type { ChatRequest, ChatErrorResponse } from '@/lib/types';
+import type { PlainChatRequest, EncryptedChatRequest } from '@/lib/types';
+
+const BACKEND = process.env.BACKEND_URL || 'http://localhost:8000';
 
 export async function POST(req: NextRequest) {
-  const body: ChatRequest = await req.json();
+  const body = (await req.json()) as PlainChatRequest | EncryptedChatRequest;
 
   if ('encrypted' in body && body.encrypted) {
-    return handleEncrypted(body as ChatRequest & { enc: string; ct: string });
-  }
-  return handlePlain(body);
-}
+    // Encrypted mode: forward encrypted request to backend
+    const encReq = body as EncryptedChatRequest;
+    const res = await fetch(`${BACKEND}/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sessionId: encReq.sessionId,
+        ct: encReq.ct,
+      }),
+    });
 
-// ===================== Plain mode (SSE via Vercel AI SDK) =====================
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: 'UNKNOWN' }));
+      return NextResponse.json(err, { status: res.status });
+    }
 
-async function handlePlain(body: ChatRequest) {
-  if (!('messages' in body)) {
-    return NextResponse.json(
-      { error: 'INVALID_REQUEST', message: 'Missing messages array' },
-      { status: 400 }
-    );
-  }
-
-  const messages = body.messages.map((m) => ({
-    role: m.role as 'user' | 'assistant',
-    content: m.content,
-  }));
-
-  // In enclave mode, force encrypted path
-  if (isEnclaveMode()) {
-    return NextResponse.json(
-      {
-        error: 'ENCRYPTION_REQUIRED',
-        message: 'Enclave mode active — encrypted channel required',
-      },
-      { status: 403 }
-    );
-  }
-
-  // Non-enclave: plain text streaming via Vercel AI SDK (SSE)
-  const { getStreamTextResult } = await import('@/lib/llm');
-  const result = getStreamTextResult(messages);
-  return result.toDataStreamResponse();
-}
-
-// ===================== Encrypted mode (Streamable HTTP) =====================
-
-async function handleEncrypted(
-  body: ChatRequest & { enc: string; ct: string }
-) {
-  if (!isEnclaveMode()) {
-    return NextResponse.json(
-      {
-        error: 'SERVICE_NOT_IN_ENCLAVE',
-        message:
-          'Service not in trusted execution environment — encrypted data cannot be processed.',
-      } satisfies ChatErrorResponse,
-      { status: 403 }
-    );
-  }
-
-  try {
-    const keyPair = getEnclaveKeyPair();
-    const { messages, responseKey } = await openAsync(
-      body.enc,
-      body.ct,
-      keyPair.privateKey
-    );
-
-    // Stream LLM response, encrypting each chunk
+    // Stream back encrypted chunks
+    const encoder = new TextEncoder();
     const stream = new ReadableStream({
       async start(controller) {
-        const encoder = new TextEncoder();
+        const reader = res.body!.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
         try {
-          for await (const chunk of streamLLM(messages)) {
-            const encrypted = encryptChunk(chunk, responseKey);
-            controller.enqueue(
-              encoder.encode(JSON.stringify(encrypted) + '\n')
-            );
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop()!;
+            for (const line of lines) {
+              if (line.trim()) {
+                controller.enqueue(encoder.encode(line + '\n'));
+              }
+            }
           }
-        } catch (err) {
-          console.error('[chat] LLM stream error:', err);
         } finally {
           controller.close();
         }
@@ -95,14 +57,56 @@ async function handleEncrypted(
         'Cache-Control': 'no-cache',
       },
     });
-  } catch (err) {
-    console.error('[chat] decrypt error:', err);
-    return NextResponse.json(
-      {
-        error: 'DECRYPT_FAILED',
-        message: 'Decryption failed — data may be corrupted or keys mismatched',
-      } satisfies ChatErrorResponse,
-      { status: 400 }
-    );
   }
+
+  // Plain mode
+  const plainReq = body as PlainChatRequest;
+  const res = await fetch(`${BACKEND}/chat`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ messages: plainReq.messages }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: 'UNKNOWN' }));
+    return NextResponse.json(err, { status: res.status });
+  }
+
+  // Stream SSE from backend
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream({
+    async start(controller) {
+      const reader = res.body!.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop()!;
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              controller.enqueue(encoder.encode(line + '\n'));
+            } else if (line.trim()) {
+              controller.enqueue(encoder.encode(line + '\n'));
+            }
+          }
+        }
+      } finally {
+        controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+        controller.close();
+      }
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      'Content-Type': 'text/event-stream',
+      'Transfer-Encoding': 'chunked',
+      'Cache-Control': 'no-cache',
+    },
+  });
 }
