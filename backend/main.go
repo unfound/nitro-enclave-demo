@@ -15,12 +15,16 @@ import (
 	"backend/tpm"
 )
 
-// Env: comma-separated PCR indices, e.g. "1,4" or "1,4,7"
-// If empty or "mock", use mock mode (returns fake PCRs).
+// ============================================================
+// 环境变量读取
+// ============================================================
+
+// PCR_INDICES: 逗号分隔的 PCR 索引，如 "1,4" 或 "1,4,7"
+// 为空或 "mock" → 使用模拟 PCR（无需真实 TPM）
 func getPCRIndices() []int {
 	s := os.Getenv("PCR_INDICES")
 	if s == "" || s == "mock" {
-		return nil // nil = mock mode
+		return nil
 	}
 	var pcrs []int
 	for _, p := range strings.Split(s, ",") {
@@ -32,8 +36,8 @@ func getPCRIndices() []int {
 	return pcrs
 }
 
-// Env: golden PCR baseline, format "1:sha256:abc...,4:sha256:def..."
-// Backend checks PCRs against baseline (optional, frontend always checks).
+// PCR_GOLDEN_BASELINE: 黄金基线，格式 "1:sha256:abc...,4:sha256:def..."
+// 可选。后端不强制检查，前端一定检查。
 func getGoldenBaseline() map[int]string {
 	s := os.Getenv("PCR_GOLDEN_BASELINE")
 	if s == "" {
@@ -54,13 +58,13 @@ func getGoldenBaseline() map[int]string {
 }
 
 // ============================================================
-// Types
+// API 类型
 // ============================================================
 
 type AttestationResponse struct {
-	PCRs      map[string]string `json:"pcrs"`
-	PublicKey string            `json:"publicKey"`
-	Mock      bool              `json:"mock"`
+	PCRs      map[string]string `json:"pcrs"`       // "1" -> "sha256:abc..."
+	PublicKey string            `json:"publicKey"` // base64 X25519 公钥
+	Mock      bool              `json:"mock"`       // true = 模拟模式
 }
 
 type KeyExchangeRequest struct {
@@ -85,7 +89,7 @@ type ChatMessage struct {
 }
 
 // ============================================================
-// Main
+// 主入口
 // ============================================================
 
 func main() {
@@ -94,15 +98,16 @@ func main() {
 	sm := session.NewManager()
 	llmClient := llm.NewClient()
 
-	// Load or create HPKE keypair
-	_, serverSK, err := tpm.GetOrCreateKeyPair()
+	// 加载或生成 HPKE 密钥对（通信用）
+	kp, err := tpm.GetOrCreateKeyPair()
 	if err != nil {
-		log.Fatalf("failed to get keypair: %v", err)
+		log.Fatalf("密钥加载失败: %v", err)
 	}
 
-	log.Printf("Backend starting...")
-	log.Printf("PCR_INDICES=%s -> PCRs: %v", os.Getenv("PCR_INDICES"), pcrIndices)
-	log.Printf("PCR_GOLDEN_BASELINE set: %v", len(goldenBaseline) > 0)
+	log.Printf("后端启动")
+	log.Printf("PCR_INDICES=%s -> 读取: %v", os.Getenv("PCR_INDICES"), pcrIndices)
+	log.Printf("PCR_GOLDEN_BASELINE: %v", len(goldenBaseline) > 0)
+	log.Printf("公钥指纹: %x", kp.PublicKey[:8])
 
 	// ── GET /attestation ──────────────────────────────────────
 	http.HandleFunc("GET /attestation", func(w http.ResponseWriter, r *http.Request) {
@@ -113,36 +118,33 @@ func main() {
 		var mock bool
 
 		if len(pcrIndices) == 0 {
-			// Mock mode
+			// 模拟模式：返回假的 PCR
 			mock = true
 			pcrs = map[string]string{
 				"1": "sha256:mock_pcr1_value_for_demo",
 				"4": "sha256:mock_pcr4_value_for_demo",
 			}
-			if serverSK != nil {
-				publicKey = hpke.PublicKeyToBase64(serverSK.PublicKey())
+			if len(kp.PublicKey) > 0 {
+				publicKey = hpke.BytesToBase64(kp.PublicKey)
 			} else {
 				publicKey = "mock_public_key_base64"
 			}
 		} else {
-			// Real TPM mode
+			// 真实 TPM 模式
 			pcrMap, err := tpm.ReadPCRs(pcrIndices)
 			if err != nil {
 				http.Error(w, fmt.Sprintf(`{"error":"TPM_ERROR","message":%q}`, err.Error()), 500)
 				return
 			}
 			pcrs = pcrMap
+			publicKey = hpke.BytesToBase64(kp.PublicKey)
 
-			if serverSK != nil {
-				publicKey = hpke.PublicKeyToBase64(serverSK.PublicKey())
-			}
-
-			// Optional backend-side baseline check
+			// 可选：后端检查 PCR 基线（仅记录日志）
 			if len(goldenBaseline) > 0 {
 				for idx, golden := range goldenBaseline {
 					idxStr := fmt.Sprintf("%d", idx)
 					if got, ok := pcrs[idxStr]; ok && got != golden {
-						log.Printf("WARN: PCR%d mismatch — got %s, want %s", idx, got, golden)
+						log.Printf("警告: PCR%d 不匹配 — 收到 %s，期望 %s", idx, got, golden)
 					}
 				}
 			}
@@ -156,6 +158,7 @@ func main() {
 	})
 
 	// ── POST /key-exchange ─────────────────────────────────────
+	// 前端发送临时公钥，完成 DH 密钥交换，建立加密 session
 	http.HandleFunc("POST /key-exchange", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, `{"error":"METHOD_NOT_ALLOWED"}`, 405)
@@ -174,7 +177,7 @@ func main() {
 			return
 		}
 
-		if serverSK == nil {
+		if len(kp.PublicKey) == 0 {
 			http.Error(w, `{"error":"KEY_NOT_INITIALIZED"}`, 500)
 			return
 		}
@@ -185,23 +188,25 @@ func main() {
 			return
 		}
 
-		sessionID, enc, responseKey, err := hpke.KeyExchange(serverSK, clientPK)
+		// DH 密钥交换
+		sessionID, enc, responseKey, err := hpke.KeyExchange(kp.PrivateKey, clientPK)
 		if err != nil {
 			http.Error(w, fmt.Sprintf(`{"error":"HPKE_ERROR","message":%q}`, err.Error()), 500)
 			return
 		}
 
-		sm.StoreWithSK(sessionID, responseKey, serverSK, enc)
+		// 存储 session
+		sm.Store(sessionID, responseKey, kp.PrivateKey, enc)
 
-		serverPK := serverSK.PublicKey()
 		json.NewEncoder(w).Encode(KeyExchangeResponse{
 			SessionID:       sessionID,
 			Enc:             hpke.BytesToBase64(enc),
-			ServerPublicKey: hpke.PublicKeyToBase64(serverPK),
+			ServerPublicKey: hpke.BytesToBase64(kp.PublicKey),
 		})
 	})
 
 	// ── POST /chat ──────────────────────────────────────────────
+	// 接收加密消息，解密 → 调用 LLM → 加密响应
 	http.HandleFunc("POST /chat", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, `{"error":"METHOD_NOT_ALLOWED"}`, 405)
@@ -225,23 +230,17 @@ func main() {
 			return
 		}
 
-		serverSKForSession, ok := sm.GetPrivateKey(req.SessionID)
-		if !ok {
-			http.Error(w, `{"error":"SESSION_NO_KEY","message":"Session missing private key"}`, 500)
-			return
-		}
-
-		messages, err := hpke.Open(req.Enc, req.Ct, responseKey)
+		// 解密
+		messages, err := hpke.Open(req.Ct, responseKey)
 		if err != nil {
 			http.Error(w, fmt.Sprintf(`{"error":"DECRYPT_FAILED","message":%q}`, err.Error()), 400)
 			return
 		}
 
-		// Build prompt from decrypted messages
 		prompt := buildPrompt(messages)
-		log.Printf("Chat request: %d chars prompt", len(prompt))
+		log.Printf("收到加密请求，prompt 长度: %d 字符", len(prompt))
 
-		// Stream LLM response, encrypting each chunk
+		// 流式 LLM 响应，逐块加密
 		w.Header().Set("Content-Type", "application/x-ndjson")
 		w.Header().Set("Transfer-Encoding", "chunked")
 		w.Header().Set("Cache-Control", "no-cache")
@@ -260,13 +259,14 @@ func main() {
 			return nil
 		})
 		if err != nil {
-			log.Printf("LLM stream error: %v", err)
+			log.Printf("LLM 流式错误: %v", err)
 		}
 
-		sm.Remove(req.SessionID) // session consumed
+		// session 只用一次
+		sm.Remove(req.SessionID)
 	})
 
-	// ── Health check ────────────────────────────────────────────
+	// ── GET /health ────────────────────────────────────────────
 	http.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
@@ -276,7 +276,7 @@ func main() {
 	if port == "" {
 		port = "8000"
 	}
-	log.Printf("Listening on :%s", port)
+	log.Printf("监听端口 :%s", port)
 	if err := http.ListenAndServe(":"+port, nil); err != nil {
 		log.Fatal(err)
 	}

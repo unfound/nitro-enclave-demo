@@ -1,66 +1,41 @@
 package session
 
 import (
-	"crypto/x25519"
 	"sync"
 
 	"github.com/google/uuid"
 )
 
-// Manager stores per-session data: derived response key.
+// Manager 管理每个 session 的数据。
+// 存储从 key-exchange 得到的 response key，用于解密和加密响应。
 type Manager struct {
-	mu      sync.RWMutex
+	mu       sync.RWMutex
 	sessions map[string]*sessionData
 }
 
 type sessionData struct {
-	responseKey  []byte
-	serverSK     x25519.PrivateKey
-	ephemeralPK  []byte
+	responseKey  []byte // 对称响应密钥
+	serverSK    []byte // 服务器私钥（临时存这里，session 结束后清除）
 }
 
-// New creates a new session manager.
+// New 创建一个新的 session manager。
 func New() *Manager {
 	return &Manager{
 		sessions: make(map[string]*sessionData),
 	}
 }
 
-// GenerateSession creates a new session and stores the derived keys.
-// Returns the session ID.
-func (m *Manager) GenerateSession(responseKey []byte, serverSK x25519.PrivateKey, ephemeralPK []byte) string {
-	id := uuid.New().String()
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.sessions[id] = &sessionData{
-		responseKey:  responseKey,
-		serverSK:     serverSK,
-		ephemeralPK:  ephemeralPK,
-	}
-	return id
-}
-
-// Store saves a response key under a session ID.
-func (m *Manager) Store(sessionID string, responseKey []byte) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.sessions[sessionID] = &sessionData{
-		responseKey: responseKey,
-	}
-}
-
-// StoreWithSK saves a response key along with the server private key for a session.
-func (m *Manager) StoreWithSK(sessionID string, responseKey []byte, serverSK x25519.PrivateKey, ephemeralPK []byte) {
+// Store 保存一个 session 的密钥数据。
+func (m *Manager) Store(sessionID string, responseKey []byte, serverSK []byte, enc []byte) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.sessions[sessionID] = &sessionData{
 		responseKey: responseKey,
 		serverSK:    serverSK,
-		ephemeralPK: ephemeralPK,
 	}
 }
 
-// Get retrieves the response key for a session.
+// Get 获取 session 的响应密钥。
 func (m *Manager) Get(sessionID string) ([]byte, bool) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -71,8 +46,8 @@ func (m *Manager) Get(sessionID string) ([]byte, bool) {
 	return d.responseKey, true
 }
 
-// GetPrivateKey retrieves the server private key for a session.
-func (m *Manager) GetPrivateKey(sessionID string) (x25519.PrivateKey, bool) {
+// GetPrivateKey 获取 session 的服务器私钥。
+func (m *Manager) GetPrivateKey(sessionID string) ([]byte, bool) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	d, ok := m.sessions[sessionID]
@@ -82,7 +57,7 @@ func (m *Manager) GetPrivateKey(sessionID string) (x25519.PrivateKey, bool) {
 	return d.serverSK, true
 }
 
-// Remove deletes a session after it has been consumed.
+// Remove 删除一个 session（使用后清理）。
 func (m *Manager) Remove(sessionID string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

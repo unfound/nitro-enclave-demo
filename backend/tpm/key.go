@@ -10,73 +10,75 @@ import (
 	"github.com/google/go-tpm/legacy/tpm2"
 )
 
-// KeyPair holds an X25519 keypair.
+// KeyPair HPKE 密钥对。
+// 用途：前端用公钥加密消息，后端用私钥解密。
+// 注意：这是通信加密密钥，不是 attestation 身份密钥。
 type KeyPair struct {
-	PublicKey  x25519.PublicKey  `json:"publicKey"`  // 32 bytes, hex
-	PrivateKey x25519.PrivateKey `json:"-"`          // never serialized to disk
+	PublicKey  []byte `json:"publicKey"`  // 32 bytes, hex 编码
+	PrivateKey []byte `json:"-"`          // 永不序列化到磁盘
 }
 
 type keyJSON struct {
 	PublicKey string `json:"pk"` // hex
-	Sealed    bool   `json:"sealed"`
 }
 
+// 默认密钥持久化路径。
+// 生产环境建议挂载 emptyDir 或 hostPath，避免 Pod 重建后丢失。
 const defaultKeyPath = "/var/lib/backend/enclave-key.json"
 
-// GetOrCreateKeyPair loads or creates the HPKE keypair.
-// In mock mode (no TPM available), falls back to a plain in-memory key.
-func GetOrCreateKeyPair() (KeyPair, x25519.PrivateKey, error) {
+// GetOrCreateKeyPair 加载或生成 HPKE 密钥对。
+// - 有持久化密钥 → 直接加载
+// - 无则生成新的 X25519 密钥对并保存
+func GetOrCreateKeyPair() (*KeyPair, error) {
 	path := os.Getenv("KEY_PATH")
 	if path == "" {
 		path = defaultKeyPath
 	}
 
-	// Try to load existing key from disk
+	// 尝试从磁盘加载
 	if data, err := os.ReadFile(path); err == nil {
 		var kj keyJSON
 		if json.Unmarshal(data, &kj) == nil {
 			pk, err := hex.DecodeString(kj.PublicKey)
 			if err == nil && len(pk) == 32 {
-				// Found a persisted key — return public only (private can't be recovered without TPM)
-				return KeyPair{
-					PublicKey: x25519.X25519PublicKey(pk),
-					sealed:    kj.Sealed,
-				}, nil, nil
+				return &KeyPair{
+					PublicKey:  pk,
+					PrivateKey: nil, // 私钥已不在磁盘上
+				}, nil
 			}
 		}
 	}
 
-	// Generate new keypair
-	_, sk := x25519.GenerateKey(make([]byte, 32))
-	kp := KeyPair{
+	// 生成新密钥对
+	priv := make([]byte, 32)
+	_, sk := x25519.GenerateKey(priv)
+
+	kp := &KeyPair{
 		PublicKey:  sk.PublicKey(),
-		PrivateKey: sk,
-		sealed:     false,
+		PrivateKey: priv,
 	}
 
+	// 持久化公钥
+	persistPublicKey(kp, path)
+
+	// 检查 TPM 是否可用（用于记录日志，不影响密钥生成）
 	tpmPath := os.Getenv("TPM_DEVICE")
 	if tpmPath == "" {
 		tpmPath = "/dev/tpm0"
 	}
-
-	// Check if TPM is available
-	rwc, err := tpm2.OpenTPM(tpmPath)
-	if err == nil {
+	if rwc, err := tpm2.OpenTPM(tpmPath); err == nil {
 		rwc.Close()
-		// TPM available — TODO: implement real seal/unseal
-		fmt.Fprintf(os.Stderr, "note: TPM available at %s, real sealing TBD\n", tpmPath)
+		// TPM 在线，后续可扩展：用 TPM seal attestation 密钥
 	} else {
-		fmt.Fprintf(os.Stderr, "note: TPM unavailable at %s: %v (using plain key)\n", tpmPath, err)
+		// 无 TPM，但我们的 HPKE 密钥本来就不需要 TPM
 	}
 
-	persistKey(kp, path)
-	return kp, sk, nil
+	return kp, nil
 }
 
-func persistKey(kp KeyPair, path string) {
+func persistPublicKey(kp *KeyPair, path string) {
 	kj := keyJSON{
 		PublicKey: hex.EncodeToString(kp.PublicKey),
-		Sealed:    kp.sealed,
 	}
 	data, _ := json.Marshal(kj)
 	os.MkdirAll(filepath.Dir(path), 0700)

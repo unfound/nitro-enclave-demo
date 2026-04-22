@@ -8,58 +8,61 @@ import (
 	"encoding/base64"
 	"fmt"
 
+	"golang.org/x/crypto/curve25519"
 	"golang.org/x/crypto/hkdf"
-	"golang.org/x/crypto/x25519"
 )
 
 // Suite: X25519 + HKDF-SHA256 + AES-128-GCM
 
-type Suite struct{}
-
-func (s Suite) KEM()  string { return "X25519" }
-func (s Suite) KDF()  string { return "HKDF-SHA256" }
-func (s Suite) AEAD() string { return "AES-128-GCM" }
-
-// KeyExchange performs HPKE key exchange.
-// Returns sessionId, enc (ephemeral pk), responseKey, and error.
-func KeyExchange(serverSK x25519.PrivateKey, clientPK x25519.PublicKey) (sessionID, enc, responseKey []byte, err error) {
-	// 1. Generate ephemeral keypair
+// KeyExchange 执行 HPKE 密钥交换。
+// serverSK: 服务器 X25519 私钥（32 bytes）
+// clientPK: 客户端 X25519 公钥（32 bytes）
+// 返回: sessionID, enc(ephemeral公钥), responseKey
+func KeyExchange(serverSK []byte, clientPK []byte) (sessionID, enc, responseKey []byte, err error) {
+	// 生成临时密钥对
 	ephemeralSK := make([]byte, 32)
-	_, _ = rand.Read(ephemeralSK)
-	ephemeralPK := x25519.X25519(ephemeralSK, x25519.Point{})
+	if _, err := rand.Read(ephemeralSK); err != nil {
+		return nil, nil, nil, fmt.Errorf("rand.Read: %w", err)
+	}
 
-	// 2. DH: server private key × client ephemeral public key
-	// Wait, we need two DH computations for proper HPKE.
-	// Simplified: ephemeral_sk × server_pk  AND  client_pk × server_sk
-	// HPKE mode "base" does: pkEmphem × recipientSK  →  shared secret
-	// Then derive keys.
+	// ephemeralPK = ephemeralSK * G
+	var ephemeralSKFixed [32]byte
+	copy(ephemeralSKFixed[:], ephemeralSK)
+	var ephemeralPK [32]byte
+	curve25519.ScalarBaseMult(&ephemeralPK, &ephemeralSKFixed)
 
-	ss1 := x25519.X25519(ephemeralSK, clientPK) // ephemeral_sk × client_pk
-	ss2 := x25519.X25519(serverSK, clientPK)    // server_sk × client_pk
+	// DH1 = ephemeralSK * serverPK
+	var serverSKFixed [32]byte
+	copy(serverSKFixed[:], serverSK)
+	var dh1 [32]byte
+	curve25519.ScalarMult(&dh1, &ephemeralSKFixed, &serverSKFixed)
 
-	// Combine shared secrets
-	combined := append(ss1[:], ss2[:]...)
-	h := hkdf.New(sha256.New, combined)
+	// DH2 = serverSK * clientPK
+	var clientPKFixed [32]byte
+	copy(clientPKFixed[:], clientPK)
+	var dh2 [32]byte
+	curve25519.ScalarMult(&dh2, &serverSKFixed, &clientPKFixed)
 
-	// Derive request key (not used in this design) and response key
-	requestKey := make([]byte, 16)
-	responseKeyBytes := make([]byte, 32)
-	_, _ = h.Read(requestKey) // discard
-	_, _ = h.Read(responseKeyBytes)
+	// 组合两个 DH 结果
+	var combined [64]byte
+	copy(combined[:32], dh1[:])
+	copy(combined[32:], dh2[:])
 
-	// sessionId from ephemeral pk
-	sessionID = ephemeralPK
+	// HKDF 派生对称密钥
+	h := hkdf.New(sha256.New, combined[:])
+	discard := make([]byte, 16)
+	h.Read(discard) // 丢弃 request key
 
-	enc = ephemeralPK
+	responseKey = make([]byte, 32)
+	h.Read(responseKey)
 
-	return sessionID, enc, responseKeyBytes, nil
+	return ephemeralPK[:], ephemeralPK[:], responseKey, nil
 }
 
-// Open decrypts a sealed HPKE message using the stored response key from the session.
-// enc: base64 ephemeral public key (not needed for decryption, just for protocol completeness)
+// Open 解密 HPKE 密文。
 // ct: base64(IV || ciphertext)
-// storedResponseKey: the response key stored during KeyExchange
-func Open(encB64, ctB64 string, storedResponseKey []byte) (plaintext []byte, err error) {
+// storedResponseKey: session 中存储的 response key
+func Open(ctB64 string, storedResponseKey []byte) ([]byte, error) {
 	ct, err := base64.StdEncoding.DecodeString(ctB64)
 	if err != nil {
 		return nil, fmt.Errorf("decode ct: %w", err)
@@ -69,21 +72,51 @@ func Open(encB64, ctB64 string, storedResponseKey []byte) (plaintext []byte, err
 	}
 	iv := ct[:12]
 	ciphertext := ct[12:]
-
 	return decryptAES128GCM(storedResponseKey, iv, ciphertext)
 }
 
-// ReDeriveResponseKey re-derives the response key from ephemeral SK and public keys.
-// This is kept for reference; the session stores the key directly.
-func ReDeriveResponseKey(ephemeralSK []byte, serverPK, clientPK x25519.PublicKey) []byte {
-	ss1 := x25519.X25519(ephemeralSK, serverPK)
-	ss2 := x25519.X25519(ephemeralSK, clientPK)
-	combined := append(ss1[:], ss2[:]...)
-	h := hkdf.New(sha256.New, combined)
-	h.Read(make([]byte, 16)) // discard request key
-	responseKey := make([]byte, 32)
-	h.Read(responseKey)
-	return responseKey
+// EncryptChunk 加密单个文本块。
+func EncryptChunk(text string, responseKey []byte) EncryptedChunk {
+	iv := make([]byte, 12)
+	rand.Read(iv)
+	ciphertext := encryptAES128GCM(responseKey, iv, []byte(text))
+	return EncryptedChunk{
+		IV: base64.StdEncoding.EncodeToString(iv),
+		Ct: base64.StdEncoding.EncodeToString(ciphertext),
+	}
+}
+
+// EncryptedChunk 加密块。
+type EncryptedChunk struct {
+	IV string `json:"iv"` // base64
+	Ct string `json:"ct"` // base64
+}
+
+// BytesToBase64 字节转 base64。
+func BytesToBase64(b []byte) string {
+	return base64.StdEncoding.EncodeToString(b)
+}
+
+// PublicKeyFromBase64 解码公钥。
+func PublicKeyFromBase64(b64 string) ([]byte, error) {
+	b, err := base64.StdEncoding.DecodeString(b64)
+	if err != nil {
+		return nil, err
+	}
+	if len(b) != 32 {
+		return nil, fmt.Errorf("invalid key length: %d", len(b))
+	}
+	return b, nil
+}
+
+// ============================================================
+// 内部
+// ============================================================
+
+func encryptAES128GCM(key, iv, plaintext []byte) []byte {
+	block, _ := aes.NewCipher(key)
+	aead, _ := cipher.NewGCM(block)
+	return aead.Seal(nil, iv, plaintext, nil)
 }
 
 func decryptAES128GCM(key, iv, ciphertext []byte) ([]byte, error) {
@@ -96,54 +129,4 @@ func decryptAES128GCM(key, iv, ciphertext []byte) ([]byte, error) {
 		return nil, err
 	}
 	return aead.Open(nil, iv, ciphertext, nil)
-}
-
-// EncryptChunk encrypts a single text chunk with AES-128-GCM.
-func EncryptChunk(text string, responseKey []byte) EncryptedChunk {
-	iv := make([]byte, 12)
-	_, _ = rand.Read(iv)
-
-	plaintext := []byte(text)
-	ciphertext := encryptAES128GCM(responseKey, iv, plaintext)
-
-	packed := append(iv, ciphertext...)
-	return EncryptedChunk{
-		IV: base64.StdEncoding.EncodeToString(iv),
-		Ct: base64.StdEncoding.EncodeToString(ciphertext),
-	}
-}
-
-func encryptAES128GCM(key, iv, plaintext []byte) []byte {
-	block, _ := aes.NewCipher(key)
-	aead, _ := cipher.NewGCM(block)
-	return aead.Seal(nil, iv, plaintext, nil)
-}
-
-type EncryptedChunk struct {
-	IV string `json:"iv"` // base64
-	Ct string `json:"ct"` // base64
-}
-
-// PublicKeyToBase64 encodes a public key to base64.
-func PublicKeyToBase64(pk x25519.PublicKey) string {
-	return base64.StdEncoding.EncodeToString(pk)
-}
-
-// PublicKeyFromBase64 decodes a public key from base64.
-func PublicKeyFromBase64(b64 string) (x25519.PublicKey, error) {
-	bytes, err := base64.StdEncoding.DecodeString(b64)
-	if err != nil {
-		return nil, err
-	}
-	return x25519.PublicKey(bytes), nil
-}
-
-// GetPublicKey derives the public key from a private key.
-func GetPublicKey(sk x25519.PrivateKey) x25519.PublicKey {
-	return sk.PublicKey()
-}
-
-// BytesToBase64 encodes raw bytes to base64.
-func BytesToBase64(b []byte) string {
-	return base64.StdEncoding.EncodeToString(b)
 }
