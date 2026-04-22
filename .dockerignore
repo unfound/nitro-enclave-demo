@@ -1,8 +1,25 @@
+# Dependencies (frontend)
 node_modules
+frontend/node_modules
 .next
+frontend/.next
+
+# Git
 .git
+.gitignore
+
+# Environment
 .env.local
+frontend/.env.local
 .enclave-keypair.json
+
+# Docs
 *.md
 !README.md
+
+# Go build artifacts
+backend/server
+backend/go.sum
+
+# Screenshots in public
 public/screenshot*.png

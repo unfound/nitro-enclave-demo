@@ -1,5 +1,22 @@
+# Dependencies
 node_modules/
+frontend/node_modules/
+
+# Build outputs
 .next/
-.enclave-keypair.json
+frontend/.next/
+*.exe
+
+# Environment
 .env.local
+frontend/.env.local
+
+# Enclave key
+.enclave-keypair.json
+
+# Go binary
+backend/server
+
+# Models
 models/*.gguf
+backend/go.sum
