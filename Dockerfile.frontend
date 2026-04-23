@@ -1,15 +1,15 @@
-# Dockerfile - Next.js Frontend
+# Dockerfile.frontend - Next.js Frontend
 #
-# 构建: docker build -t nitro-enclave-frontend ./frontend
+# 构建: docker build -f Dockerfile.frontend -t nitro-enclave-frontend .
 # 运行: docker run -p 3000:3000 nitro-enclave-frontend
 
 ARG REGISTRY=docker.1ms.run/
 FROM ${REGISTRY}library/node:20-slim AS builder
 
 WORKDIR /app
-COPY package.json package-lock.json ./
+COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
-COPY . .
+COPY frontend/ ./
 RUN npm run build
 
 # ============================================

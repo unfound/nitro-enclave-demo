@@ -1,7 +1,5 @@
 # Dependencies (frontend)
-node_modules
 frontend/node_modules
-.next
 frontend/.next
 
 # Git
@@ -9,7 +7,6 @@ frontend/.next
 .gitignore
 
 # Environment
-.env.local
 frontend/.env.local
 .enclave-keypair.json
 
@@ -18,8 +15,7 @@ frontend/.env.local
 !README.md
 
 # Go build artifacts
-backend/server
 backend/go.sum
 
-# Screenshots in public
-public/screenshot*.png
+# Screenshots
+frontend/public/screenshot*.png

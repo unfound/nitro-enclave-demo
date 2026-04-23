@@ -155,8 +155,7 @@ nitro-enclave-demo/
 │
 │   ├── Dockerfile.llm           # LLM 镜像构建
 │   ├── Dockerfile.backend       # 后端镜像构建
-│   └── frontend/
-│       └── Dockerfile           # 前端镜像构建
+│   └── Dockerfile.frontend      # 前端镜像构建
 ```
 
 ## 环境变量

@@ -38,7 +38,7 @@ docker compose logs -f
 |------|-----------|------|
 | LLM 推理 | `Dockerfile.llm` | alpine-llama-cpp-server + GGUF 模型 |
 | Go 后端 | `Dockerfile.backend` | golang:alpine 编译 Go 二进制 |
-| Next.js 前端 | `frontend/Dockerfile` | 多阶段构建，standalone 输出 |
+| Next.js 前端 | `Dockerfile.frontend` | 多阶段构建，standalone 输出 |
 
 ## 单独构建某个服务
 
@@ -50,7 +50,7 @@ docker build -f Dockerfile.llm -t nitro-enclave-llm .
 docker build -f Dockerfile.backend -t nitro-enclave-backend .
 
 # 前端
-docker build -f frontend/Dockerfile -t nitro-enclave-frontend ./frontend
+docker build -f Dockerfile.frontend -t nitro-enclave-frontend .
 ```
 
 ## 本地开发构建
