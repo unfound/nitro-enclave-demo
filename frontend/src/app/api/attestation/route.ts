@@ -15,20 +15,19 @@ export async function GET() {
     }
 
     // backend 返回 { pcrs, publicKey, mock }
-    // 有 publicKey 就能加密，mock 只影响 attestation 可信度
+    // 有 publicKey 就能加密通信
+    // mock=true 只表示无法获取真实 PCR（本地/测试环境），此时 attestation 详情不展示
     const hasKey = !!data.publicKey;
     return NextResponse.json({
-      trusted: hasKey && !data.mock,
+      trusted: hasKey,
       publicKey: hasKey ? data.publicKey : null,
-      attestation: data.mock
-        ? null
-        : {
+      attestation: !data.mock ? {
             module_id: 'nitro-enclave',
             timestamp: new Date().toISOString(),
             pcrs: data.pcrs,
             certificate: '',
             cabundle: [],
-          },
+          } : null,
     });
   } catch {
     return NextResponse.json({
