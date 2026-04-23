@@ -1,37 +1,17 @@
-# Dockerfile - Next.js App（纯前端，模型由 ollama sidecar 提供）
+# Dockerfile — Legacy standalone Next.js app (已废弃)
 #
-# 构建: docker build -t nitro-enclave-app .
-# 配合 docker-compose.yml 使用
-
-ARG REGISTRY=docker.1ms.run/
-FROM ${REGISTRY}library/node:20-slim AS builder
-
-WORKDIR /app
-COPY package.json package-lock.json ./
-RUN npm ci
-COPY . .
-RUN npm run build
-
-# ============================================
-# Production image
-# ============================================
-FROM ${REGISTRY}library/node:20-slim
-
-WORKDIR /app
-
-# Next.js standalone
-COPY --from=builder /app/.next/standalone ./
-COPY --from=builder /app/.next/static ./.next/static
-COPY --from=builder /app/public ./public
-
-# 环境变量（可通过 docker-compose 覆盖）
-ENV NODE_ENV=production
-ENV HOSTNAME=0.0.0.0
-ENV PORT=3000
-ENV USE_MOCK_LLM=false
-ENV ENCLAVE_MODE=false
-# LLM_BASE_URL 和 LLM_MODEL 由 docker-compose.yml 注入
-
-EXPOSE 3000
-
-CMD ["node", "server.js"]
+# 当前架构已将 LLM 调用迁移到 Go 后端（backend/）。
+# 请使用 docker-compose.yml，它会构建以下三个服务：
+#
+#   1. frontend/   — Next.js 前端（端口 3000）
+#   2. backend/     — Go 后端（端口 8000）
+#   3. llm/         — llama.cpp server（端口 8080）
+#
+# 构建全部: docker compose build
+# 启动全部: docker compose up -d
+#
+# 如需单独构建前端:
+#   docker build -f frontend/Dockerfile -t nitro-enclave-frontend ./frontend
+#
+# 如需单独构建后端:
+#   docker build -f Dockerfile.backend -t nitro-enclave-backend .

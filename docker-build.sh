@@ -1,5 +1,5 @@
 #!/bin/bash
-# 构建并运行 - Ollama sidecar 版本
+# docker-build.sh — 构建并启动全套服务
 #
 # 用法:
 #   ./docker-build.sh          # 构建 + 启动
@@ -10,11 +10,10 @@
 set -e
 
 cd "$(dirname "$0")"
-PROJECT="nitro-enclave"
 
 case "${1:-all}" in
   build)
-    echo "🔨 构建镜像..."
+    echo "🔨 构建镜像 (frontend + backend + llm)..."
     sudo docker compose build
     echo "✅ 构建完成"
     ;;
@@ -22,8 +21,9 @@ case "${1:-all}" in
     echo "🚀 启动服务..."
     sudo docker compose up -d
     echo "✅ 已启动"
-    echo "   App:    http://localhost:3000"
-    echo "   Ollama: http://localhost:11434 (需取消 docker-compose 注释)"
+    echo "   前端:   http://localhost:3000"
+    echo "   后端:   http://localhost:8000"
+    echo "   LLM:    http://localhost:8080"
     ;;
   down)
     echo "🛑 停止服务..."
@@ -31,18 +31,15 @@ case "${1:-all}" in
     echo "✅ 已停止"
     ;;
   all)
-    echo "🔨 构建镜像..."
+    echo "🔨 构建镜像 (frontend + backend + llm)..."
     sudo docker compose build
     echo "🚀 启动服务..."
     sudo docker compose up -d
     echo ""
     echo "✅ 完成！"
-    echo "   App: http://localhost:3000"
-    echo ""
-    echo "   等待模型加载（约 15 秒后测试）:"
-    echo "   curl -s -X POST http://localhost:3000/api/chat \\"
-    echo "     -H 'Content-Type: application/json' \\"
-    echo "     -d '{\"messages\":[{\"role\":\"user\",\"content\":\"你好\"}]}'"
+    echo "   前端:   http://localhost:3000"
+    echo "   后端:   http://localhost:8000"
+    echo "   LLM:    http://localhost:8080"
     ;;
   *)
     echo "用法: $0 [build|up|down|all]"

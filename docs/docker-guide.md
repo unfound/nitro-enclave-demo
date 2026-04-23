@@ -129,30 +129,34 @@ CMD ["node", "server.js"]
 
 **好处：** 最终镜像只包含运行时，不带编译器和源码，体积小很多。
 
-## 4. 本项目架构（Ollama Sidecar 模式）
+## 4. 本项目架构（三服务分层）
 
 ```
-┌── docker-compose ──────────────────────────────────────────────┐
-│                                                                 │
-│  ┌───── ollama 容器 ─────┐    ┌───── app 容器 ─────┐            │
-│  │  Ollama + 模型(GGUF)  │    │  Next.js (Node.js) │            │
-│  │  :11434               │←───│  :3000             │            │
-│  │  (模型已打包在镜像内)    │    │  (纯 HTTP 调用)     │            │
-│  └───────────────────────┘    └────────────────────┘            │
-│                                                                 │
-│  前端浏览器 ──HTTP──→ :3000/api/chat ──HTTP──→ ollama:11434/v1   │
-└─────────────────────────────────────────────────────────────────┘
+┌── docker-compose ────────────────────────────────────────────────────┐
+│                                                                   │
+│  ┌───── llm 容器 ─────┐   ┌───── backend 容器 ────┐  ┌── frontend ──┐ │
+│  │  llama-server     │   │  Go + Nitro Enclave   │  │  Next.js     │ │
+│  │  :8080            │←──│  :8000                │←─│  :3000       │ │
+│  │  (GGUF 模型推理)    │   │  (VDP 加密传输)        │  │  (Web UI)    │ │
+│  └───────────────────┘   └────────────────────────┘  └─────────────┘ │
+│                                                                   │
+│  前端 ──HTTP──→ :3000 ──HTTP──→ :8000/vdp/chat ──HTTP──→ llm:8080   │
+└───────────────────────────────────────────────────────────────────┘
 ```
 
-**两个独立容器：**
-- `ollama`: 模型推理服务（Ollama 官方镜像 + 本地 GGUF 打包）
-- `app`: Next.js Web 应用（纯 Node.js，零编译依赖）
+**三个独立容器：**
+- `llm`: GGUF 模型推理服务（llama-server，端口 8080）
+- `backend`: Go 后端 + Nitro Enclave（VDP 加密，端口 8000）
+- `frontend`: Next.js Web 应用（纯前端，端口 3000）
 
 ### 构建流程（各镜像独立构建）
 
 ```
-Dockerfile.ollama:
-  ollama/ollama → COPY GGUF 模型 → ollama create → 完成
+Dockerfile.llm:
+  alpine-llama-cpp-server → COPY GGUF 模型 → 完成
+
+Dockerfile.backend:
+  golang:alpine → go build → 完成
 
 Dockerfile:
   node:20-slim → npm ci → npm run build → COPY standalone → 完成
@@ -160,60 +164,91 @@ Dockerfile:
 
 ## 5. docker-compose.yml
 
-管理多个容器（ollama + app）一起启动：
+管理多个容器（llm + backend + frontend）一起启动：
 
 ```yaml
 services:
-  # Ollama 模型服务（模型已打包在镜像内）
-  ollama:
+  # GGUF 模型推理服务
+  llm:
     build:
       context: .
-      dockerfile: Dockerfile.ollama
+      dockerfile: Dockerfile.llm
     shm_size: "2g"
+    ports:
+      - "8080:8080"
 
-  # Next.js 应用
-  app:
+  # Go 后端 + Nitro Enclave
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    ports:
+      - "8000:8000"
+    environment:
+      ENCLAVE_MODE: "false"
+      LLM_BASE_URL: "http://llm:8080"
+    depends_on:
+      - llm
+
+  # Next.js 前端
+  frontend:
     build:
       context: .
       dockerfile: Dockerfile
     ports:
       - "3000:3000"
     environment:
-      USE_MOCK_LLM: "false"
-      ENCLAVE_MODE: "false"
-      LLM_BASE_URL: "http://ollama:11434/v1"
-      LLM_MODEL: "qwen3.5"
+      NEXT_PUBLIC_API_URL: "http://localhost:8000"
     depends_on:
-      - ollama
+      - backend
 ```
 
 ```bash
-# 构建并启动（一条命令）
-docker compose up -d --build
+# 构建所有镜像
+docker compose -f docker-compose.yml build
+
+# 启动所有服务
+docker compose -f docker-compose.yml up -d
 
 # 查看日志
-docker compose logs -f
+docker compose -f docker-compose.yml logs -f
 
 # 停止
-docker compose down
+docker compose -f docker-compose.yml down
 
 # 或用脚本
-./docker-build.sh          # 构建 + 启动
-./docker-build.sh build    # 只构建
+./docker-build.sh build    # 构建所有镜像
+./docker-build.sh up       # 启动所有服务
 ./docker-build.sh down     # 停止
+./docker-build.sh all      # 构建 + 启动
 ```
 
 ## 6. 环境变量配置
 
+### llm 服务（llama-server）
+
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
-| `ENCLAVE_MODE` | `true` | `false` = 明文模式，`true` = 加密模式 |
-| `USE_MOCK_LLM` | `true` | `false` = 走真实模型 |
-| `LLM_BASE_URL` | `http://ollama:11434/v1` | Ollama API 地址（compose 内用服务名） |
-| `LLM_MODEL` | `qwen3.5` | 模型名称（对应 ollama create 时的名字） |
-| `SYSTEM_PROMPT` | 内置 | 自定义系统提示词 |
+| `HOST` | `0.0.0.0` | 监听地址 |
+| `PORT` | `8080` | 监听端口 |
+| `MODEL` | `/models/Qwen2.5-7B-Instruct-Q5_K_M.gguf` | GGUF 模型路径 |
+| `CTX_SIZE` | `1024` | 上下文大小（token） |
 
-> 旧变量 `LLM_THREADS` 已废弃（llama-server 线程数配置由 Ollama 管理）
+### backend 服务（Go）
+
+| 变量 | 默认值 | 说明 |
+|------|--------|------|
+| `ENCLAVE_MODE` | `false` | `false` = 明文模式，`true` = Nitro Enclave 加密 |
+| `LLM_BASE_URL` | `http://llm:8080` | llama-server 地址（compose 内用服务名） |
+| `LLM_MODEL` | `qwen2.5` | 模型名称 |
+
+### frontend 服务（Next.js）
+
+| 变量 | 默认值 | 说明 |
+|------|--------|------|
+| `NEXT_PUBLIC_API_URL` | `http://localhost:8000` | 后端 API 地址（浏览器客户端用） |
+
+> 旧变量 `LLM_THREADS`、`USE_MOCK_LLM`、`LLM_MODEL`（前端侧）已废弃。
 
 ## 7. 常见问题
 

@@ -37,7 +37,7 @@ COPY --from=builder /build/backend .
 ENV PORT=8000
 ENV TPM_DEVICE=/dev/tpm0
 ENV KEY_PATH=/var/lib/backend/enclave-key.json
-ENV LLM_BASE_URL=http://localhost:8001
+ENV LLM_BASE_URL=http://localhost:8080
 ENV LLM_MODEL=qwen3.5
 
 # PCR indices to read (comma-separated), e.g. "1,4,7"

@@ -1,28 +1,48 @@
 services:
+  # ── LLM ──────────────────────────────────────────────────────────────
   llm:
     build:
       context: .
       dockerfile: Dockerfile.ollama
     container_name: nitro-enclave-llm
     shm_size: "2g"
-    # 如需外部调试，取消下面注释:
-    # ports:
-    #   - "8080:8080"
     restart: unless-stopped
 
-  app:
+  # ── Backend ──────────────────────────────────────────────────────────
+  backend:
     build:
       context: .
+      dockerfile: Dockerfile.backend
+    container_name: nitro-enclave-backend
+    ports:
+      - "8000:8000"
+    environment:
+      PORT: "8000"
+      # Mock 模式（无真实 TPM 时开启）
+      USE_MOCK_TPM: "true"
+      # PCR indices（逗号分隔），mock 模式下任意
+      PCR_INDICES: "1,4"
+      # LLM 地址（llm 服务在 docker compose 内部可达）
+      LLM_BASE_URL: http://llm:8080
+      LLM_MODEL: qwen3.5
+      # mock LLM 直接返回假回答，用于无 GPU 环境开发调试
+      USE_MOCK_LLM: "false"
+    depends_on:
+      - llm
+    restart: unless-stopped
+
+  # ── Frontend ────────────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
       dockerfile: Dockerfile
-    container_name: nitro-enclave-app
+    container_name: nitro-enclave-frontend
     ports:
       - "3000:3000"
     environment:
-      USE_MOCK_LLM: "false"
-      ENCLAVE_MODE: "true"
-      LLM_BASE_URL: "http://llm:8080/v1"
-      LLM_MODEL: "qwen3.5"
-      SYSTEM_PROMPT: "你是一位专业的运动健康助手，擅长回答运动健康相关的问题，回答尽量简洁易懂。"
+      NEXT_PUBLIC_API_BASE: http://backend:8000
+      # mock 模式 golden baseline（与后端 mock PCR 值对应）
+      NEXT_PUBLIC_PCR_GOLDEN_BASELINE: 1:sha256:mock_pcr1_value_for_demo,4:sha256:mock_pcr4_value_for_demo
     depends_on:
-      - llm
+      - backend
     restart: unless-stopped
