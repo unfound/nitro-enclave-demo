@@ -20,3 +20,4 @@ backend/server
 # Models
 models/*.gguf
 backend/go.sum
+tsconfig.tsbuildinfo

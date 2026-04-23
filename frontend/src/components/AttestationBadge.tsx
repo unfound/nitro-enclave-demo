@@ -1,21 +1,28 @@
 'use client';
 
-import { useState, useEffect } from 'react';
 import { useLang } from './LanguageProvider';
 import type { AttestationResponse } from '@/lib/types';
 
-export default function AttestationBadge() {
-  const { t } = useLang();
-  const [data, setData] = useState<AttestationResponse | null>(null);
-  const [error, setError] = useState(false);
-  const [showDetails, setShowDetails] = useState(false);
+interface Props {
+  attestation: AttestationResponse | null;
+  loading?: boolean;
+  error?: boolean;
+}
 
-  useEffect(() => {
-    fetch('/api/attestation')
-      .then((res) => res.json())
-      .then((d: AttestationResponse) => setData(d))
-      .catch(() => setError(true));
-  }, []);
+export default function AttestationBadge({ attestation, loading = false, error = false }: Props) {
+  const { t } = useLang();
+
+  if (loading || attestation === null) {
+    return (
+      <div className="badge badge-loading">
+        <span className="badge-icon">⏳</span>
+        <div className="badge-info">
+          <span className="badge-title">{t.badge.loading}</span>
+          <span className="badge-detail">{t.badge.loadingDesc}</span>
+        </div>
+      </div>
+    );
+  }
 
   if (error) {
     return (
@@ -29,21 +36,9 @@ export default function AttestationBadge() {
     );
   }
 
-  if (!data) {
-    return (
-      <div className="badge badge-loading">
-        <span className="badge-icon">⏳</span>
-        <div className="badge-info">
-          <span className="badge-title">{t.badge.loading}</span>
-          <span className="badge-detail">{t.badge.loadingDesc}</span>
-        </div>
-      </div>
-    );
-  }
-
-  const isTrusted = data.trusted;
-  const publicKeyShort = data.publicKey
-    ? `${data.publicKey.slice(0, 12)}...${data.publicKey.slice(-8)}`
+  const isTrusted = attestation.trusted;
+  const publicKeyShort = attestation.publicKey
+    ? `${attestation.publicKey.slice(0, 12)}...${attestation.publicKey.slice(-8)}`
     : null;
 
   return (
@@ -58,16 +53,10 @@ export default function AttestationBadge() {
         </span>
         {isTrusted && publicKeyShort && (
           <div className="badge-details">
-            <summary onClick={() => setShowDetails(!showDetails)}>
-              {showDetails ? t.badge.hideDetails : t.badge.showDetails}
-            </summary>
-            {showDetails && data.attestation && (
-              <pre>
-                {t.badge.publicKey}: <code>{publicKeyShort}</code>
-                {'\n'}PCR0: {data.attestation.pcrs['0']?.slice(0, 24)}...
-                {'\n'}Module: {data.attestation.module_id}
-              </pre>
-            )}
+            <pre>
+              {t.badge.publicKey}: <code>{publicKeyShort}</code>
+              {'\n'}PCR: {attestation.attestation?.pcrs ? 'verified' : 'mock mode'}
+            </pre>
           </div>
         )}
       </div>

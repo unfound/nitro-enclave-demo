@@ -39,6 +39,21 @@ export interface ChatErrorResponse {
   message: string;
 }
 
+// === LLM SSE Stream Chunk（解密前的原始格式） ===
+
+export interface LLMStreamChunk {
+  id: string;
+  object: string;
+  created: number;
+  model: string;
+  system_fingerprint: string;
+  choices: Array<{
+    index: number;
+    delta: { role?: string; content: string | null };
+    finish_reason: string | null;
+  }>;
+}
+
 // === Encrypted Stream Chunk ===
 
 export interface EncryptedChunk {

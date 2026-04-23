@@ -27,15 +27,21 @@ function useCurrentTime() {
 function AppContent() {
   const { t, toggleLang } = useLang();
   const time = useCurrentTime();
-  const [attestation, setAttestation] = useState<AttestationResponse | null>(
-    null
-  );
+  const [attestation, setAttestation] = useState<AttestationResponse | null>(null);
+  const [attestationError, setAttestationError] = useState(false);
+  const [attestationLoading, setAttestationLoading] = useState(true);
 
   useEffect(() => {
     fetch('/api/attestation')
       .then((res) => res.json())
-      .then((data: AttestationResponse) => setAttestation(data))
-      .catch(() => {});
+      .then((data: AttestationResponse) => {
+        setAttestation(data);
+        setAttestationLoading(false);
+      })
+      .catch(() => {
+        setAttestationError(true);
+        setAttestationLoading(false);
+      });
   }, []);
 
   return (
@@ -60,11 +66,11 @@ function AppContent() {
           </header>
 
           <section className="attestation-section">
-            <AttestationBadge />
+            <AttestationBadge attestation={attestation} loading={attestationLoading} error={attestationError} />
           </section>
 
           <section className="chat-section">
-            <ChatPanel attestation={attestation} />
+            <ChatPanel attestation={attestation} attestationError={attestationError} />
           </section>
 
           <footer className="app-footer">
