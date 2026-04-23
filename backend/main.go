@@ -291,8 +291,6 @@ func main() {
 		if err != nil {
 			log.Printf("LLM 流式错误: %v", err)
 		}
-
-		sm.Remove(req.SessionID)
 	})
 
 	// ── GET /health ────────────────────────────────────────────
