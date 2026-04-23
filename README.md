@@ -148,12 +148,15 @@ nitro-enclave-demo/
 │   └── llm/
 │       └── client.go           # LLM 流式调用
 │
-├── docs/
-│   └── k8s-deployment.md       # K8s 部署指南
+│   ├── docs/
+│   │   ├── build-guide.md       # Docker 构建指南
+│   │   ├── docker-guide.md      # Docker 使用指南
+│   │   └── k8s-deployment.md    # K8s 部署指南
 │
-├── Dockerfile                  # 前端镜像构建
-├── Dockerfile.ollama            # LLM 镜像构建
-└── Dockerfile.backend          # 后端镜像构建
+│   ├── Dockerfile.llm           # LLM 镜像构建
+│   ├── Dockerfile.backend       # 后端镜像构建
+│   └── frontend/
+│       └── Dockerfile           # 前端镜像构建
 ```
 
 ## 环境变量

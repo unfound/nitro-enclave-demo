@@ -3,7 +3,7 @@ services:
   llm:
     build:
       context: .
-      dockerfile: Dockerfile.ollama
+      dockerfile: Dockerfile.llm
     container_name: nitro-enclave-llm
     shm_size: "2g"
     restart: unless-stopped

@@ -11,11 +11,12 @@ frontend/.next/
 .env.local
 frontend/.env.local
 
+# Build outputs
+backend/backend
+*.log
+
 # Enclave key
 .enclave-keypair.json
-
-# Go binary
-backend/server
 
 # Models
 models/*.gguf
