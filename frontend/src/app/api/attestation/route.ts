@@ -42,16 +42,19 @@ export async function GET() {
 
     // 若无 golden baseline（未配置），仅检查公钥存在
     if (Object.keys(golden).length === 0) {
+      // mock 模式始终返回 attestation（含 PCR），真实模式无 baseline 则不返回
       return NextResponse.json({
         trusted: true,
         publicKey: data.publicKey,
-        attestation: data.mock ? {
-          module_id: 'nitro-enclave-mock',
-          timestamp: new Date().toISOString(),
-          pcrs: data.pcrs,
-          certificate: '',
-          cabundle: [],
-        } : null,
+        attestation: data.mock || !parseGoldenBaseline()
+          ? {
+              module_id: data.mock ? 'nitro-enclave-mock' : 'nitro-enclave',
+              timestamp: new Date().toISOString(),
+              pcrs: data.pcrs ?? {},
+              certificate: '',
+              cabundle: [],
+            }
+          : null,
       });
     }
 
@@ -72,8 +75,8 @@ export async function GET() {
     return NextResponse.json({
       trusted: pcrMatch,
       publicKey: pcrMatch ? data.publicKey : null,
-      attestation: pcrMatch && !data.mock ? {
-        module_id: 'nitro-enclave',
+      attestation: pcrMatch ? {
+        module_id: data.mock ? 'nitro-enclave-mock' : 'nitro-enclave',
         timestamp: new Date().toISOString(),
         pcrs: data.pcrs,
         certificate: '',

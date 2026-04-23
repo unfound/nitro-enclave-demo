@@ -247,6 +247,26 @@ body {
   line-height: 1.5;
 }
 
+.pcr-display {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.pcr-label {
+  color: #16a34a;
+  font-weight: 600;
+}
+
+.pcr-value {
+  background: transparent;
+  border: none;
+  padding: 0;
+  font-size: 9px;
+  color: #586068;
+  word-break: break-all;
+}
+
 /* ============ Chat Panel ============ */
 
 .chat-panel {

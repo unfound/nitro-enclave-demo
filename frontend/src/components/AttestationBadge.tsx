@@ -55,7 +55,18 @@ export default function AttestationBadge({ attestation, loading = false, error =
           <div className="badge-details">
             <pre>
               {t.badge.publicKey}: <code>{publicKeyShort}</code>
-              {'\n'}PCR: {attestation.attestation?.pcrs ? 'verified' : 'mock mode'}
+            </pre>
+          </div>
+        )}
+        {attestation.attestation?.pcrs && (
+          <div className="badge-details">
+            <pre className="pcr-display">
+              {Object.entries(attestation.attestation.pcrs).map(([idx, val]) => (
+                <div key={idx}>
+                  <span className="pcr-label">PCR{idx}:</span>{' '}
+                  <code className="pcr-value">{val}</code>
+                </div>
+              ))}
             </pre>
           </div>
         )}
