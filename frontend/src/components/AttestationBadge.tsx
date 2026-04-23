@@ -52,23 +52,25 @@ export default function AttestationBadge({ attestation, loading = false, error =
           {isTrusted ? t.badge.trustedDesc : t.badge.untrustedDesc}
         </span>
         {isTrusted && publicKeyShort && (
-          <div className="badge-details">
-            <pre>
-              {t.badge.publicKey}: <code>{publicKeyShort}</code>
-            </pre>
-          </div>
-        )}
-        {attestation.attestation?.pcrs && (
-          <div className="badge-details">
-            <pre className="pcr-display">
-              {Object.entries(attestation.attestation.pcrs).map(([idx, val]) => (
-                <div key={idx}>
-                  <span className="pcr-label">PCR{idx}:</span>{' '}
-                  <code className="pcr-value">{val}</code>
+          <details className="pcr-details">
+            <summary className="pcr-summary">
+              <span className="pcr-summary-icon">🔐</span>
+              <span className="pcr-summary-text">查看技术详情</span>
+              <span className="pcr-chevron">›</span>
+            </summary>
+            <div className="pcr-body">
+              <div className="pcr-row pcr-row--key">
+                <span className="pcr-index">Key</span>
+                <code className="pcr-hash">{attestation.publicKey}</code>
+              </div>
+              {Object.entries(attestation.attestation?.pcrs ?? {}).map(([idx, val]) => (
+                <div key={idx} className="pcr-row">
+                  <span className="pcr-index">PCR{idx}</span>
+                  <code className="pcr-hash">{val}</code>
                 </div>
               ))}
-            </pre>
-          </div>
+            </div>
+          </details>
         )}
       </div>
     </div>
