@@ -16,7 +16,10 @@
 
 ## 待办
 
-- [ ] 前端 attestation badge 展示细节优化（PCR 值、模块信息）
+- [x] 前端 attestation badge 可收起展示 Key+PCR 详情（a1e70e4）
+- [x] 前端 attestation badge 绿色主题样式优化
+- [x] 清理误 committed 的截图（b7e1d2e）
+- [x] 添加前端 Dockerfile（b7e1d2e）
 - [ ] 前端整体 UI 优化（样式、动画）
 - [ ] 后端：真实 TPM PCR 读取与 golden baseline 对比
 - [ ] 后端：服务注册到 K8s
