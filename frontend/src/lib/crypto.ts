@@ -1,24 +1,22 @@
-'use server';
-
-import { X25519 } from '@noble/curves/amd64/cv25519';
-import { gcm, randomBytes } from '@noble/ciphers/webcrypto';
-import { base64 } from '@noble/strings/var64';
+import { x25519 } from '@noble/curves/ed25519.js';
+import { gcm } from '@noble/ciphers/webcrypto.js';
+import { randomBytes } from '@noble/ciphers/utils.js';
 import type { KeyExchangeResponse } from './types';
 
 // ============================================================
-// Base64 工具
+// Base64 工具（浏览器内置 btoa/atob）
 // ============================================================
 
 export function bytesToBase64(bytes: Uint8Array): string {
-  return base64.encode(bytes);
+  return btoa(String.fromCharCode(...bytes));
 }
 
 export function base64ToBytes(b64: string): Uint8Array {
-  return base64.decode(b64);
+  return Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
 }
 
 export function publicKeyToBase64(publicKey: Uint8Array): string {
-  return base64.encode(publicKey);
+  return bytesToBase64(publicKey);
 }
 
 // ============================================================
@@ -30,7 +28,7 @@ export function publicKeyToBase64(publicKey: Uint8Array): string {
  */
 export function generateClientKeyPair(): { clientSK: Uint8Array; clientPK: Uint8Array } {
   const clientSK = randomBytes(32);
-  const clientPK = X25519.scalarMultBase(clientSK);
+  const clientPK = x25519.scalarMultBase(clientSK);
   return { clientSK, clientPK };
 }
 
@@ -52,8 +50,8 @@ export async function encryptWithResponseKey(
   const cipher = gcm(responseKey, iv);
   const ciphertext = await cipher.encrypt(new TextEncoder().encode(plaintext));
   return {
-    iv: base64.encode(iv),
-    ct: base64.encode(ciphertext),
+    iv: bytesToBase64(iv),
+    ct: bytesToBase64(ciphertext),
   };
 }
 
@@ -65,8 +63,8 @@ export async function decryptWithResponseKey(
   iv: string,
   ct: string
 ): Promise<string> {
-  const cipher = gcm(responseKey, base64.decode(iv));
-  const plaintext = await cipher.decrypt(base64.decode(ct));
+  const cipher = gcm(responseKey, base64ToBytes(iv));
+  const plaintext = await cipher.decrypt(base64ToBytes(ct));
   return new TextDecoder().decode(plaintext);
 }
 
@@ -90,12 +88,12 @@ export function hexToBytes(hex: string): Uint8Array {
  * 后端 ChatRequest.Ct = base64(IV || ciphertext)
  */
 export function combineIVAndCiphertext(iv: string, ct: string): string {
-  const ivBytes = base64.decode(iv);
-  const ctBytes = base64.decode(ct);
+  const ivBytes = base64ToBytes(iv);
+  const ctBytes = base64ToBytes(ct);
   const combined = new Uint8Array(ivBytes.length + ctBytes.length);
   combined.set(ivBytes, 0);
   combined.set(ctBytes, ivBytes.length);
-  return base64.encode(combined);
+  return bytesToBase64(combined);
 }
 
 /**

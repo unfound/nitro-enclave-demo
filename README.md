@@ -41,7 +41,7 @@ Browser (React)                    K8s Pod (Backend+LLM)                 Huawei 
 | 后端 | Go + `go-tpm` + `go-tpm-tools` | 新建 Go 服务 |
 | TPM | 华为云 QingTian TPM 2.0 | 通过 `/dev/tpm0` 访问 |
 | 加密 | HPKE (X25519 + HKDF-SHA256 + AES-128-GCM) | 前端用 `@hpke/core`，后端用 `golang.org/x/crypto` |
-| LLM | llama.cpp server (qwen3.5-0.8B) | 端口 8001 `/inference` |
+| LLM | llama.cpp server (qwen3.5-0.8B) | 端口 8080 `/v1/chat/completions` |
 | K8s | K8s + device plugin | Pod 需挂载 `/dev/tpm0` |
 
 ## 三个核心接口
@@ -167,7 +167,7 @@ nitro-enclave-demo/
 | `PCR_GOLDEN_BASELINE` | 空 | 格式 `1:sha256:abc...,4:sha256:def...`；可选，后端仅记录日志 |
 | `TPM_DEVICE` | `/dev/tpm0` | TPM 设备路径 |
 | `KEY_PATH` | `/var/lib/backend/enclave-key.json` | 公钥持久化路径 |
-| `LLM_BASE_URL` | `http://localhost:8001` | LLM 服务地址 |
+| `LLM_BASE_URL` | `http://localhost:8080` | LLM 服务地址 |
 | `LLM_MODEL` | `qwen3.5` | 模型名称 |
 
 ### Frontend（待改造）

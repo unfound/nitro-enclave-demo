@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"backend/hpke"
 	"backend/llm"
@@ -260,13 +261,33 @@ func main() {
 			return
 		}
 
-		err = llmClient.Stream(prompt, func(text string) error {
-			encrypted := hpke.EncryptChunk(text, responseKey)
-			line, _ := json.Marshal(encrypted)
-			fmt.Fprintf(w, "%s\n", line)
-			flusher.Flush()
-			return nil
-		})
+		log.Printf("调用 LLM Stream，prompt 长度: %d", len(prompt))
+		err = func() error {
+			if useMockLLM {
+				// Mock 流式响应
+				mockResp := "这是一条来自 Nitro Enclave 的加密回复。你的消息已安全解密并处理。"
+				for i := 0; i < len(mockResp); i += 5 {
+					end := i + 5
+					if end > len(mockResp) {
+						end = len(mockResp)
+					}
+					chunk := mockResp[i:end]
+					encrypted := hpke.EncryptChunk(chunk, responseKey)
+					line, _ := json.Marshal(encrypted)
+					fmt.Fprintf(w, "%s\n", line)
+					flusher.Flush()
+					time.Sleep(10 * time.Millisecond)
+				}
+				return nil
+			}
+			return llmClient.Stream(prompt, func(text string) error {
+				encrypted := hpke.EncryptChunk(text, responseKey)
+				line, _ := json.Marshal(encrypted)
+				fmt.Fprintf(w, "%s\n", line)
+				flusher.Flush()
+				return nil
+			})
+		}()
 		if err != nil {
 			log.Printf("LLM 流式错误: %v", err)
 		}

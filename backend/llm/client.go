@@ -5,12 +5,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"time"
 )
 
-const defaultURL = "http://localhost:8001/v1/chat/completions"
+const defaultURL = "http://localhost:8080/v1/chat/completions"
 
 type Client struct {
 	baseURL string
@@ -82,12 +83,16 @@ func (c *Client) Stream(prompt string, cb func(string) error) error {
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer not-needed")
+	req.Header.Set("Accept", "text/event-stream")
 
+	log.Printf("[LLM Stream] POST %s | bodylen=%d", c.baseURL, len(body))
 	resp, err := c.client.Do(req)
 	if err != nil {
 		return fmt.Errorf("do request: %w", err)
 	}
 	defer resp.Body.Close()
+
+	log.Printf("LLM Stream: status=%d", resp.StatusCode)
 
 	if resp.StatusCode != 200 {
 		respBody, _ := io.ReadAll(resp.Body)
@@ -95,6 +100,7 @@ func (c *Client) Stream(prompt string, cb func(string) error) error {
 	}
 
 	// Read SSE stream line by line
+	log.Printf("LLM Stream: starting to read body")
 	reader := io.Reader(resp.Body)
 	buf := make([]byte, 0, 4096)
 	lineBuf := make([]byte, 0, 4096)

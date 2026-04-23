@@ -29,18 +29,10 @@ export interface KeyExchangeResponse {
 
 // === Chat API Types ===
 
-export interface PlainChatRequest {
-  encrypted?: false;
-  messages: Array<{ role: string; content: string }>;
-}
-
-export interface EncryptedChatRequest {
-  encrypted: true;
+export interface ChatRequest {
   sessionId: string; // hex from /key-exchange
   ct: string;        // base64 IV(12) || ciphertext
 }
-
-export type ChatRequest = PlainChatRequest | EncryptedChatRequest;
 
 export interface ChatErrorResponse {
   error: string;

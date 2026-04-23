@@ -36,6 +36,7 @@ const zh = {
     ],
     errorEnclave: '服务未在可信执行环境中运行，无法处理加密数据',
     errorGeneric: '请求失败，请重试',
+    attestationFailed: 'TPM 验证未通过，无法进行加密通信',
   },
   lang: {
     switch: 'EN',
@@ -78,6 +79,7 @@ const en: typeof zh = {
     ],
     errorEnclave: 'Service not in trusted execution environment, cannot process encrypted data',
     errorGeneric: 'Request failed, please try again',
+    attestationFailed: 'TPM verification failed, cannot establish encrypted communication',
   },
   lang: {
     switch: '中文',

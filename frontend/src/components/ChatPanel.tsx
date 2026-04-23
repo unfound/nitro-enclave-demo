@@ -2,12 +2,13 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { useLang } from './LanguageProvider';
-import { Shield, User, Bot } from 'lucide-react';
+import { Shield, User, Bot, AlertTriangle } from 'lucide-react';
 import type {
   AttestationResponse,
   ChatMessage,
   EncryptedChunk,
   KeyExchangeResponse,
+  ChatRequest,
 } from '@/lib/types';
 import {
   generateClientKeyPair,
@@ -21,8 +22,6 @@ interface Props {
   attestation: AttestationResponse | null;
 }
 
-type Mode = 'encrypted' | 'plain';
-
 interface EncryptedSession {
   sessionId: string;    // hex
   responseKey: Uint8Array;
@@ -30,25 +29,15 @@ interface EncryptedSession {
 
 export default function ChatPanel({ attestation }: Props) {
   const { t } = useLang();
-  const [mode, setMode] = useState<Mode>('encrypted');
-  const [encryptedMessages, setEncryptedMessages] = useState<ChatMessage[]>([]);
-  const [plainMessages, setPlainMessages] = useState<ChatMessage[]>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [streaming, setStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [session, setSession] = useState<EncryptedSession | null>(null);
   const messagesEnd = useRef<HTMLDivElement>(null);
 
-  const canEncrypt = attestation?.trusted && attestation?.publicKey;
-  const messages = mode === 'encrypted' ? encryptedMessages : plainMessages;
-  const setMessages = mode === 'encrypted' ? setEncryptedMessages : setPlainMessages;
-
-  // Attestation loaded and failed → force plain mode
-  useEffect(() => {
-    if (attestation && !attestation.trusted) {
-      setMode('plain');
-    }
-  }, [attestation]);
+  const attestationFailed = attestation !== null && !attestation.trusted;
+  const attestationLoading = attestation === null;
 
   useEffect(() => {
     messagesEnd.current?.scrollIntoView({ behavior: 'smooth' });
@@ -82,6 +71,7 @@ export default function ChatPanel({ attestation }: Props) {
 
   async function handleSend(text: string) {
     if (!text.trim() || streaming) return;
+    if (attestationFailed || attestationLoading) return;
 
     const userMsg: ChatMessage = { role: 'user', content: text.trim() };
     setMessages((prev) => [...prev, userMsg]);
@@ -93,11 +83,7 @@ export default function ChatPanel({ attestation }: Props) {
     setMessages((prev) => [...prev, { role: 'assistant', content: '' }]);
 
     try {
-      if (mode === 'encrypted') {
-        await sendEncrypted(userMsg);
-      } else {
-        await sendPlain(userMsg);
-      }
+      await sendEncrypted(userMsg);
     } catch (e) {
       const msg =
         e instanceof Error && e.message === 'ENCLAVE_DECRYPT_FAILED'
@@ -107,48 +93,6 @@ export default function ChatPanel({ attestation }: Props) {
       setMessages((prev) => prev.slice(0, -1));
     } finally {
       setStreaming(false);
-    }
-  }
-
-  async function sendPlain(userMsg: ChatMessage) {
-    const allMessages = [...messages.filter((m) => m.content), userMsg];
-    const res = await fetch('/api/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messages: allMessages }),
-    });
-
-    if (!res.ok) throw new Error('Request failed');
-
-    const reader = res.body!.getReader();
-    const decoder = new TextDecoder();
-    let buffer = '';
-    let accumulated = '';
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-
-      const lines = buffer.split('\n');
-      buffer = lines.pop()!;
-
-      for (const line of lines) {
-        if (!line.startsWith('data: ')) continue;
-        const data = line.slice(6);
-        if (data === '[DONE]') continue;
-
-        try {
-          const parsed = JSON.parse(data);
-          const text = parsed.choices?.[0]?.delta?.content;
-          if (text) {
-            accumulated += text;
-            updateLastMessage(accumulated);
-          }
-        } catch {
-          // skip non-JSON lines
-        }
-      }
     }
   }
 
@@ -228,30 +172,20 @@ export default function ChatPanel({ attestation }: Props) {
 
   return (
     <div className="chat-panel">
-      {/* Mode Toggle */}
-      <div className="mode-toggle">
-        <button
-          className={`mode-btn ${mode === 'encrypted' ? 'active' : ''}`}
-          onClick={() => setMode('encrypted')}
-          disabled={!!attestation && !attestation.trusted}
-        >
-          <Shield size={14} />
-          {t.chat.encryptedMode}
-        </button>
-        <button
-          className={`mode-btn ${mode === 'plain' ? 'active' : ''}`}
-          onClick={() => setMode('plain')}
-        >
-          📄 {t.chat.plainMode}
-        </button>
-      </div>
+      {/* TPM 验证失败提示 */}
+      {attestationFailed && (
+        <div className="error-banner attestation-failed">
+          <AlertTriangle size={14} />
+          <span>{t.chat.attestationFailed}</span>
+        </div>
+      )}
 
       {/* Error Banner */}
       {error && <div className="error-banner">{error}</div>}
 
       {/* Messages */}
       <div className="messages">
-        {showEmpty ? (
+        {showEmpty && !attestationFailed ? (
           <div className="empty-state">
             <p>{t.chat.emptyTitle}</p>
             <p className="empty-hint">{t.chat.emptyHint}</p>
@@ -261,6 +195,7 @@ export default function ChatPanel({ attestation }: Props) {
                   key={i}
                   className="chip"
                   onClick={() => handleSuggestion(s)}
+                  disabled={attestationFailed || attestationLoading}
                 >
                   {s}
                 </button>
@@ -282,14 +217,12 @@ export default function ChatPanel({ attestation }: Props) {
                       ) : null)}
                     </div>
                   </div>
-                  {mode === 'encrypted' && (
-                    <div className="message-meta">
-                      <span className="message-encrypt-badge">
-                        <Shield size={10} />
-                        {t.chat.encrypted}
-                      </span>
-                    </div>
-                  )}
+                  <div className="message-meta">
+                    <span className="message-encrypt-badge">
+                      <Shield size={10} />
+                      {t.chat.encrypted}
+                    </span>
+                  </div>
                 </div>
               </div>
             ))}
@@ -309,10 +242,13 @@ export default function ChatPanel({ attestation }: Props) {
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder={t.chat.placeholder}
-          disabled={streaming}
+          placeholder={attestationFailed ? t.chat.attestationFailed : t.chat.placeholder}
+          disabled={streaming || attestationFailed || attestationLoading}
         />
-        <button type="submit" disabled={streaming || !input.trim()}>
+        <button
+          type="submit"
+          disabled={streaming || !input.trim() || attestationFailed || attestationLoading}
+        >
           {t.chat.send}
         </button>
       </form>
