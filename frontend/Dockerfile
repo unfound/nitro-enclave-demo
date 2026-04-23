@@ -1,0 +1,39 @@
+# Dockerfile - Next.js Frontend
+#
+# 构建: docker build -t nitro-enclave-frontend ./frontend
+# 运行: docker run -p 3000:3000 nitro-enclave-frontend
+
+ARG REGISTRY=docker.1ms.run/
+FROM ${REGISTRY}library/node:20-slim AS builder
+
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci
+COPY . .
+RUN npm run build
+
+# ============================================
+# Production image
+# ============================================
+FROM ${REGISTRY}library/node:20-slim
+
+WORKDIR /app
+
+# Next.js standalone
+COPY --from=builder /app/.next/standalone ./
+COPY --from=builder /app/.next/static ./.next/static
+COPY --from=builder /app/public ./public
+
+# 环境变量（可通过 docker run -e 或 docker-compose 覆盖）
+ENV NODE_ENV=production
+ENV HOSTNAME=0.0.0.0
+ENV PORT=3000
+
+# 后端地址（K8s 部署时替换为 backend-svc）
+ENV NEXT_PUBLIC_API_BASE=http://localhost:8000
+# Mock 模式 golden baseline（真实部署时替换）
+ENV NEXT_PUBLIC_PCR_GOLDEN_BASELINE=1:sha256:mock_pcr1_value_for_demo,4:sha256:mock_pcr4_value_for_demo
+
+EXPOSE 3000
+
+CMD ["node", "server.js"]
