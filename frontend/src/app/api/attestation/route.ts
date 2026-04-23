@@ -2,6 +2,25 @@ import { NextResponse } from 'next/server';
 
 const BACKEND = process.env.BACKEND_URL || 'http://localhost:8000';
 
+// Mock 模式下的 golden baseline（与后端 mock PCR 值对应）
+const MOCK_GOLDEN_PCR: Record<string, string> = {
+  '1': 'sha256:mock_pcr1_value_for_demo',
+  '4': 'sha256:mock_pcr4_value_for_demo',
+};
+
+// 从环境变量读取真实环境的 golden baseline
+// 格式：1:sha256:abc...,4:sha256:def...
+function parseGoldenBaseline(): Record<string, string> {
+  const env = process.env.NEXT_PUBLIC_PCR_GOLDEN_BASELINE || '';
+  if (!env) return {};
+  const result: Record<string, string> = {};
+  for (const pair of env.split(',')) {
+    const [idx, val] = pair.trim().split(':');
+    if (idx && val) result[idx] = val;
+  }
+  return result;
+}
+
 export async function GET() {
   try {
     const res = await fetch(`${BACKEND}/attestation`);
@@ -14,20 +33,52 @@ export async function GET() {
       );
     }
 
-    // backend 返回 { pcrs, publicKey, mock }
-    // 有 publicKey 就能加密通信
-    // mock=true 只表示无法获取真实 PCR（本地/测试环境），此时 attestation 详情不展示
-    const hasKey = !!data.publicKey;
+    if (!data.publicKey) {
+      return NextResponse.json({ trusted: false, publicKey: null, attestation: null });
+    }
+
+    // 根据 mock 字段选择对应的 golden baseline
+    const golden = data.mock ? MOCK_GOLDEN_PCR : parseGoldenBaseline();
+
+    // 若无 golden baseline（未配置），仅检查公钥存在
+    if (Object.keys(golden).length === 0) {
+      return NextResponse.json({
+        trusted: true,
+        publicKey: data.publicKey,
+        attestation: data.mock ? {
+          module_id: 'nitro-enclave-mock',
+          timestamp: new Date().toISOString(),
+          pcrs: data.pcrs,
+          certificate: '',
+          cabundle: [],
+        } : null,
+      });
+    }
+
+    // PCR 校验
+    let pcrMatch = true;
+    if (data.pcrs) {
+      for (const [idx, expected] of Object.entries(golden)) {
+        const got = data.pcrs[idx];
+        if (!got || got !== expected) {
+          pcrMatch = false;
+          break;
+        }
+      }
+    } else {
+      pcrMatch = false;
+    }
+
     return NextResponse.json({
-      trusted: hasKey,
-      publicKey: hasKey ? data.publicKey : null,
-      attestation: !data.mock ? {
-            module_id: 'nitro-enclave',
-            timestamp: new Date().toISOString(),
-            pcrs: data.pcrs,
-            certificate: '',
-            cabundle: [],
-          } : null,
+      trusted: pcrMatch,
+      publicKey: pcrMatch ? data.publicKey : null,
+      attestation: pcrMatch && !data.mock ? {
+        module_id: 'nitro-enclave',
+        timestamp: new Date().toISOString(),
+        pcrs: data.pcrs,
+        certificate: '',
+        cabundle: [],
+      } : null,
     });
   } catch {
     return NextResponse.json({
