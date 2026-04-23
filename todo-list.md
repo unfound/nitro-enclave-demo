@@ -5,17 +5,18 @@
 - [x] 修复 mock 模式下 attestation trusted 逻辑（31533b0）
 - [x] 调通前后端通信：LLM 端口 8001→8080，加日志
 - [x] README 端口和 API 路径更新
-- [x] 代码提交（f298fc2）
+- [x] 前端清理：删除 enclave.ts/llm.ts（未用），简化 AttestationBadge 数据流
+- [x] 移除 ai/@ai-sdk/openai 依赖（已迁移到 Go 后端调用 LLM）
+- [x] 补全 LLMStreamChunk 类型定义
+- [x] attestation loading/error 状态正确传递
+- [x] 代码提交（f298fc2, 01cef22）
 
 ## 进行中
 
-- [ ] 前端清理：删除不需要的文件，修复 TS 报错
-
 ## 待办
 
-- [ ] 前端适配新版后端接口（chat 接口 ct 字段）
-- [ ] 前端 attestation badge 组件重构
-- [ ] 前端整体 UI 优化
+- [ ] 前端 attestation badge 展示细节优化（PCR 值、模块信息）
+- [ ] 前端整体 UI 优化（样式、动画）
 - [ ] 后端：真实 TPM PCR 读取与 golden baseline 对比
 - [ ] 后端：服务注册到 K8s
 - [ ] 文档：K8s 部署指南完善
