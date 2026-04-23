@@ -9,7 +9,8 @@
 - [x] 移除 ai/@ai-sdk/openai 依赖（已迁移到 Go 后端调用 LLM）
 - [x] 补全 LLMStreamChunk 类型定义
 - [x] attestation loading/error 状态正确传递
-- [x] 代码提交（f298fc2, 01cef22）
+- [x] mock 模式 PCR 校验：前端用 MOCK_GOLDEN_PCR 验证后端返回的 mock PCR（bf45932）
+- [x] 代码提交（f298fc2, 01cef22, 85595eb, bf45932）
 
 ## 进行中
 
