@@ -1,7 +1,7 @@
 # Dockerfile.frontend - Next.js Frontend
 #
-# 构建: docker build -f Dockerfile.frontend -t nitro-enclave-frontend .
-# 运行: docker run -p 3000:3000 nitro-enclave-frontend
+# 构建: docker build -f Dockerfile.frontend -t tpm-app-frontend .
+# 运行: docker run -p 3000:3000 tpm-app-frontend
 
 ARG REGISTRY=docker.1ms.run/
 FROM ${REGISTRY}library/node:20-slim AS builder

@@ -4,7 +4,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.llm
-    container_name: nitro-enclave-llm
+    container_name: tpm-app-llm
     shm_size: "2g"
     restart: unless-stopped
 
@@ -13,7 +13,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.backend
-    container_name: nitro-enclave-backend
+    container_name: tpm-app-backend
     ports:
       - "8000:8000"
     environment:
@@ -36,7 +36,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.frontend
-    container_name: nitro-enclave-frontend
+    container_name: tpm-app-frontend
     ports:
       - "3000:3000"
     environment:

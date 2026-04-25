@@ -1,4 +1,4 @@
-// Nitro Enclave Attestation Backend — Go 1.24
+// TPM Attestation Backend — Go 1.24
 package main
 
 import (
@@ -117,7 +117,7 @@ func main() {
 	}
 
 	log.Printf("═══════════════════════════════════════")
-	log.Printf("Nitro Enclave Attestation Server")
+	log.Printf("TPM App Server")
 	log.Printf("═══════════════════════════════════════")
 	log.Printf("Mock TPM:  %v", useMockTPM)
 	log.Printf("Mock LLM:  %v", useMockLLM)

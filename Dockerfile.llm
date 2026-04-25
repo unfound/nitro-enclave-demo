@@ -3,7 +3,7 @@
 # 基础镜像仅 8.8MB（Alpine + 预编译 llama.cpp server）
 # 支持 OpenAI 兼容 API: /v1/chat/completions
 #
-# 构建: docker build -f Dockerfile.llm -t nitro-enclave-llm .
+# 构建: docker build -f Dockerfile.llm -t tpm-app-llm .
 
 ARG REGISTRY=docker.1ms.run/
 FROM ${REGISTRY}samueltallet/alpine-llama-cpp-server:latest

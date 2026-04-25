@@ -1,23 +1,23 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: nitro-enclave-demo
+  name: tpm-app-demo
   labels:
-    app: nitro-enclave-demo
+    app: tpm-app-demo
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: nitro-enclave-demo
+      app: tpm-app-demo
   template:
     metadata:
       labels:
-        app: nitro-enclave-demo
+        app: tpm-app-demo
     spec:
       containers:
         # 轻量级模型服务（Alpine + llama.cpp server）
         - name: llm
-          image: nitro-enclave-llm:latest
+          image: tpm-app-llm:latest
           ports:
             - containerPort: 8080
               name: llm-api
@@ -31,7 +31,7 @@ spec:
 
         # Next.js 应用
         - name: app
-          image: nitro-enclave-app:latest
+          image: tpm-app-app:latest
           ports:
             - containerPort: 3000
               name: http
@@ -67,10 +67,10 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: nitro-enclave-demo
+  name: tpm-app-demo
 spec:
   selector:
-    app: nitro-enclave-demo
+    app: tpm-app-demo
   ports:
     - port: 80
       targetPort: 3000

@@ -44,13 +44,13 @@ docker compose logs -f
 
 ```bash
 # LLM 服务
-docker build -f Dockerfile.llm -t nitro-enclave-llm .
+docker build -f Dockerfile.llm -t tpm-app-llm .
 
 # Go 后端
-docker build -f Dockerfile.backend -t nitro-enclave-backend .
+docker build -f Dockerfile.backend -t tpm-app-backend .
 
 # 前端
-docker build -f Dockerfile.frontend -t nitro-enclave-frontend .
+docker build -f Dockerfile.frontend -t tpm-app-frontend .
 ```
 
 ## 本地开发构建

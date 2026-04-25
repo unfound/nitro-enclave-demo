@@ -124,7 +124,7 @@ Browser (React)                    K8s Pod (Backend+LLM)                 Huawei 
 ## 项目结构
 
 ```
-nitro-enclave-demo/
+tpm-app/
 ├── README.md                    # 本文档
 │
 ├── frontend/                    # 现有 Next.js 前端（待改造指向 Go backend）

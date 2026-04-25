@@ -1,6 +1,6 @@
 # Docker 使用指南
 
-> 面向 Docker 新手，结合 nitro-enclave-demo 项目实战讲解。
+> 面向 Docker 新手，结合 tpm-app-demo 项目实战讲解。
 
 ## 1. 核心概念
 
@@ -313,10 +313,10 @@ kubectl apply -f k8s/deployment.yaml
 
 # 查看状态
 kubectl get pods
-kubectl logs -f deployment/nitro-enclave-demo
+kubectl logs -f deployment/tpm-app-demo
 
 # 更新配置后重新部署
-kubectl rollout restart deployment/nitro-enclave-demo
+kubectl rollout restart deployment/tpm-app-demo
 ```
 
 ## 9. 磁盘清理

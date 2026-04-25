@@ -48,7 +48,7 @@ export async function GET() {
         publicKey: data.publicKey,
         attestation: data.mock || !parseGoldenBaseline()
           ? {
-              module_id: data.mock ? 'nitro-enclave-mock' : 'nitro-enclave',
+              module_id: data.mock ? 'tpm-app-mock' : 'tpm-app',
               timestamp: new Date().toISOString(),
               pcrs: data.pcrs ?? {},
               certificate: '',
@@ -76,7 +76,7 @@ export async function GET() {
       trusted: pcrMatch,
       publicKey: pcrMatch ? data.publicKey : null,
       attestation: pcrMatch ? {
-        module_id: data.mock ? 'nitro-enclave-mock' : 'nitro-enclave',
+        module_id: data.mock ? 'tpm-app-mock' : 'tpm-app',
         timestamp: new Date().toISOString(),
         pcrs: data.pcrs,
         certificate: '',
