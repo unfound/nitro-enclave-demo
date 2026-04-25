@@ -23,7 +23,7 @@ services:
       # PCR indices（逗号分隔），mock 模式下任意
       PCR_INDICES: "1,4"
       # LLM 地址（llm 服务在 docker compose 内部可达）
-      LLM_BASE_URL: http://llm:8080
+      LLM_BASE_URL: http://llm:8080/v1/chat/completions
       LLM_MODEL: qwen3.5
       # mock LLM 直接返回假回答，用于无 GPU 环境开发调试
       USE_MOCK_LLM: "false"
