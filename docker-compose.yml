@@ -40,7 +40,7 @@ services:
     ports:
       - "3000:3000"
     environment:
-      NEXT_PUBLIC_API_BASE: http://backend:8000
+      BACKEND_URL: http://backend:8000
       # mock 模式 golden baseline（与后端 mock PCR 值对应）
       NEXT_PUBLIC_PCR_GOLDEN_BASELINE: 1:sha256:mock_pcr1_value_for_demo,4:sha256:mock_pcr4_value_for_demo
     depends_on:

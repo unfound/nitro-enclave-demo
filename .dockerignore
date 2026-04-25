@@ -15,7 +15,7 @@ frontend/.env.local
 !README.md
 
 # Go build artifacts
-backend/go.sum
+# backend/go.sum  # 不要忽略，Dockerfile 需要它
 
 # Screenshots
 frontend/public/screenshot*.png
