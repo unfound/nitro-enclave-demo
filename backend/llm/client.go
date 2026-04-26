@@ -67,6 +67,26 @@ type StreamChoice struct {
 	} `json:"delta"`
 }
 
+// ── 日志辅助 ────────────────────────────────────────────────────────────────
+
+func logRequest(method, url string, body []byte) {
+	preview := string(body)
+	if len(preview) > 200 {
+		preview = preview[:200] + "..."
+	}
+	log.Printf("[LLM   OUT] %s %s | bodylen=%d | %.200s", method, url, len(body), preview)
+}
+
+func logResponse(status int, body []byte) {
+	preview := string(body)
+	if len(preview) > 200 {
+		preview = preview[:200] + "..."
+	}
+	log.Printf("[LLM   IN ] status=%d | bodylen=%d | %.200s", status, len(body), preview)
+}
+
+// ── Stream ──────────────────────────────────────────────────────────────────
+
 // Stream calls the LLM and yields text chunks via the given callback.
 func (c *Client) Stream(prompt string, cb func(string) error) error {
 	reqBody := ChatRequest{
@@ -77,6 +97,8 @@ func (c *Client) Stream(prompt string, cb func(string) error) error {
 		Stream: true,
 	}
 	body, _ := json.Marshal(reqBody)
+	logRequest("POST", c.baseURL, body)
+
 	req, err := http.NewRequest("POST", c.baseURL, bytes.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("new request: %w", err)
@@ -85,25 +107,27 @@ func (c *Client) Stream(prompt string, cb func(string) error) error {
 	req.Header.Set("Authorization", "Bearer not-needed")
 	req.Header.Set("Accept", "text/event-stream")
 
-	log.Printf("[LLM Stream] POST %s | bodylen=%d", c.baseURL, len(body))
 	resp, err := c.client.Do(req)
 	if err != nil {
+		log.Printf("[LLM   ERR] 连接失败: %v", err)
 		return fmt.Errorf("do request: %w", err)
 	}
 	defer resp.Body.Close()
 
-	log.Printf("LLM Stream: status=%d", resp.StatusCode)
+	log.Printf("[LLM   IN ] status=%d", resp.StatusCode)
 
 	if resp.StatusCode != 200 {
 		respBody, _ := io.ReadAll(resp.Body)
+		logResponse(resp.StatusCode, respBody)
 		return fmt.Errorf("LLM returned %d: %s", resp.StatusCode, respBody)
 	}
 
-	// Read SSE stream line by line
-	log.Printf("LLM Stream: starting to read body")
 	reader := io.Reader(resp.Body)
 	buf := make([]byte, 0, 4096)
 	lineBuf := make([]byte, 0, 4096)
+	chunks := 0
+
+	log.Printf("[LLM   IN ] 开始读取流...")
 
 	for {
 		n, err := reader.Read(buf[:cap(buf)])
@@ -113,16 +137,18 @@ func (c *Client) Stream(prompt string, cb func(string) error) error {
 					line := string(lineBuf)
 					lineBuf = lineBuf[:0]
 					if len(line) > 0 && len(line) < 10000 {
-						// SSE line format: "data: {...}"
 						if len(line) > 5 && line[:5] == "data:" {
 							data := line[5:]
 							if data == "[DONE]" {
+								log.Printf("[LLM   IN ] 流结束，共 %d chunks", chunks)
 								return nil
 							}
 							var chunk StreamChunk
 							if json.Unmarshal([]byte(data), &chunk) == nil {
 								if len(chunk.Choices) > 0 && chunk.Choices[0].Delta.Content != "" {
+									chunks++
 									if err := cb(chunk.Choices[0].Delta.Content); err != nil {
+										log.Printf("[LLM   ERR] callback error: %v", err)
 										return err
 									}
 								}
@@ -138,13 +164,17 @@ func (c *Client) Stream(prompt string, cb func(string) error) error {
 			break
 		}
 		if err != nil {
+			log.Printf("[LLM   ERR] 读取流失败: %v", err)
 			return fmt.Errorf("read body: %w", err)
 		}
 	}
+	log.Printf("[LLM   IN ] 流正常结束，共 %d chunks", chunks)
 	return nil
 }
 
-// Non-streaming call.
+// ── Complete (non-streaming) ────────────────────────────────────────────────
+
+// Complete sends a non-streaming completion request.
 func (c *Client) Complete(prompt string) (string, error) {
 	reqBody := ChatRequest{
 		Model: c.model,
@@ -154,6 +184,8 @@ func (c *Client) Complete(prompt string) (string, error) {
 		Stream: false,
 	}
 	body, _ := json.Marshal(reqBody)
+	logRequest("POST", c.baseURL, body)
+
 	req, err := http.NewRequest("POST", c.baseURL, bytes.NewReader(body))
 	if err != nil {
 		return "", err
@@ -163,12 +195,14 @@ func (c *Client) Complete(prompt string) (string, error) {
 
 	resp, err := c.client.Do(req)
 	if err != nil {
+		log.Printf("[LLM   ERR] 连接失败: %v", err)
 		return "", err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != 200 {
 		respBody, _ := io.ReadAll(resp.Body)
+		logResponse(resp.StatusCode, respBody)
 		return "", fmt.Errorf("LLM returned %d: %s", resp.StatusCode, respBody)
 	}
 
@@ -180,5 +214,6 @@ func (c *Client) Complete(prompt string) (string, error) {
 	if len(cr.Choices) == 0 {
 		return "", fmt.Errorf("no choices in response")
 	}
+	log.Printf("[LLM   IN ] 完成，非流式响应 length=%d", len(cr.Choices[0].Message.Content))
 	return cr.Choices[0].Message.Content, nil
 }

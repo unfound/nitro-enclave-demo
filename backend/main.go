@@ -60,6 +60,7 @@ var (
 	useMockTPM    = os.Getenv("USE_MOCK_TPM") == "true"
 	useMockLLM    = os.Getenv("USE_MOCK_LLM") == "true"
 	enclaveMode   = os.Getenv("ENCLAVE_MODE") == "true"
+	systemPrompt  = os.Getenv("SYSTEM_PROMPT")
 	pcrIndices    []int
 	goldenBaseline map[int]string
 	llmClient     *llm.Client
@@ -90,6 +91,9 @@ func parseEnv() {
 
 func buildPrompt(messages []ChatMessage) string {
 	var sb strings.Builder
+	if systemPrompt != "" {
+		sb.WriteString("system: " + systemPrompt + "\n")
+	}
 	for _, m := range messages {
 		sb.WriteString(fmt.Sprintf("%s: %s\n", m.Role, m.Content))
 	}
@@ -122,13 +126,16 @@ func main() {
 	log.Printf("Mock TPM:  %v", useMockTPM)
 	log.Printf("Mock LLM:  %v", useMockLLM)
 	log.Printf("Enclave:   %v", enclaveMode)
+	log.Printf("SystemPrompt: %.50s", systemPrompt)
 	log.Printf("PCR 索引:  %v", pcrIndices)
 	log.Printf("Golden:    %v", len(goldenBaseline) > 0)
 	log.Printf("公钥指纹:  %x", kp.PublicKey[:8])
 
 	// ── GET /attestation ──────────────────────────────────────
 	http.HandleFunc("/attestation", func(w http.ResponseWriter, r *http.Request) {
+		log.Printf("[HTTP   IN ] GET /attestation")
 		if r.Method != http.MethodGet {
+			log.Printf("[HTTP   OUT] /attestation 405 METHOD_NOT_ALLOWED")
 			http.Error(w, `{"error":"METHOD_NOT_ALLOWED"}`, 405)
 			return
 		}
@@ -140,14 +147,17 @@ func main() {
 
 		if useMockTPM || len(pcrIndices) == 0 {
 			mock = true
+			log.Printf("[TPM         ] Mock 模式，返回模拟 PCR 值")
 			pcrs = map[string]string{
 				"1": "sha256:mock_pcr1_value_for_demo",
 				"4": "sha256:mock_pcr4_value_for_demo",
 			}
 			publicKey = hpke.BytesToBase64(kp.PublicKey)
 		} else {
+			log.Printf("[TPM         ] 读取真实 TPM PCR (indices=%v)", pcrIndices)
 			pcrMap, err := tpm.ReadPCRs(pcrIndices)
 			if err != nil {
+				log.Printf("[TPM         ] PCR 读取失败: %v", err)
 				http.Error(w, fmt.Sprintf(`{"error":"TPM_ERROR","message":%q}`, err.Error()), 500)
 				return
 			}
@@ -158,23 +168,27 @@ func main() {
 				for idx, golden := range goldenBaseline {
 					idxStr := fmt.Sprintf("%d", idx)
 					if got, ok := pcrs[idxStr]; ok && got != golden {
-						log.Printf("警告: PCR%d 不匹配 — 收到 %s，期望 %s", idx, got, golden)
+						log.Printf("[TPM         ] 警告: PCR%d 不匹配 — 收到 %s，期望 %s", idx, got, golden)
 					}
 				}
 			}
 		}
 
-		json.NewEncoder(w).Encode(AttestationResponse{
+		resp := AttestationResponse{
 			PCRs:      pcrs,
 			PublicKey: publicKey,
 			Trusted:   len(kp.PublicKey) > 0,
 			Mock:      mock,
-		})
+		}
+		log.Printf("[HTTP   OUT] /attestation trusted=%v mock=%v pcrs=%v", resp.Trusted, resp.Mock, len(resp.PCRs))
+		json.NewEncoder(w).Encode(resp)
 	})
 
 	// ── POST /key-exchange ─────────────────────────────────────
 	http.HandleFunc("/key-exchange", func(w http.ResponseWriter, r *http.Request) {
+		log.Printf("[HTTP   IN ] POST /key-exchange")
 		if r.Method != http.MethodPost {
+			log.Printf("[HTTP   OUT] /key-exchange 405 METHOD_NOT_ALLOWED")
 			http.Error(w, `{"error":"METHOD_NOT_ALLOWED"}`, 405)
 			return
 		}
@@ -182,74 +196,95 @@ func main() {
 
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
+			log.Printf("[HTTP   OUT] /key-exchange 400 BAD_REQUEST: %v", err)
 			http.Error(w, fmt.Sprintf(`{"error":"BAD_REQUEST","message":%q}`, err.Error()), 400)
 			return
 		}
 		var req KeyExchangeRequest
 		if err := json.Unmarshal(body, &req); err != nil {
+			log.Printf("[HTTP   OUT] /key-exchange 400 BAD_JSON: %v", err)
 			http.Error(w, fmt.Sprintf(`{"error":"BAD_JSON","message":%q}`, err.Error()), 400)
 			return
 		}
+		log.Printf("[HPKE        ] 收到客户端公钥 len=%d", len(req.ClientPublicKey))
 
 		clientPK, err := hpke.PublicKeyFromBase64(req.ClientPublicKey)
 		if err != nil {
+			log.Printf("[HPKE        ] 无效客户端公钥: %v", err)
 			http.Error(w, fmt.Sprintf(`{"error":"INVALID_KEY","message":%q}`, err.Error()), 400)
 			return
 		}
 
 		sessionID, enc, responseKey, err := hpke.KeyExchange(kp.PrivateKey, clientPK)
 		if err != nil {
+			log.Printf("[HPKE        ] 密钥交换失败: %v", err)
 			http.Error(w, fmt.Sprintf(`{"error":"HPKE_ERROR","message":%q}`, err.Error()), 500)
 			return
 		}
 
 		sm.Store(hex.EncodeToString(sessionID), responseKey)
+		log.Printf("[HPKE        ] 密钥交换成功，sessionID=%x responseKey=%.10s...", sessionID[:8], hex.EncodeToString(responseKey)[:10])
 
-		json.NewEncoder(w).Encode(KeyExchangeResponse{
+		resp := KeyExchangeResponse{
 			SessionID:       hex.EncodeToString(sessionID),
 			Enc:             hpke.BytesToBase64(enc),
 			ResponseKey:     hex.EncodeToString(responseKey),
 			ServerPublicKey: hpke.BytesToBase64(kp.PublicKey),
-		})
+		}
+		log.Printf("[HTTP   OUT] /key-exchange 200 sessionID=%s", resp.SessionID[:16])
+		json.NewEncoder(w).Encode(resp)
 	})
 
 	// ── POST /chat ──────────────────────────────────────────────
 	http.HandleFunc("/chat", func(w http.ResponseWriter, r *http.Request) {
+		log.Printf("[HTTP   IN ] POST /chat")
 		if r.Method != http.MethodPost {
+			log.Printf("[HTTP   OUT] /chat 405 METHOD_NOT_ALLOWED")
 			http.Error(w, `{"error":"METHOD_NOT_ALLOWED"}`, 405)
 			return
 		}
 
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
+			log.Printf("[HTTP   OUT] /chat 400 BAD_REQUEST: %v", err)
 			http.Error(w, fmt.Sprintf(`{"error":"BAD_REQUEST","message":%q}`, err.Error()), 400)
 			return
 		}
 		var req ChatRequest
 		if err := json.Unmarshal(body, &req); err != nil {
+			log.Printf("[HTTP   OUT] /chat 400 BAD_JSON: %v", err)
 			http.Error(w, fmt.Sprintf(`{"error":"BAD_JSON","message":%q}`, err.Error()), 400)
 			return
 		}
+		log.Printf("[HTTP        ] sessionID=%.16s ct_len=%d", req.SessionID, len(req.Ct))
 
 		responseKey, ok := sm.Get(req.SessionID)
 		if !ok {
+			log.Printf("[HPKE        ] Session 不存在 sessionID=%.16s", req.SessionID)
 			http.Error(w, `{"error":"SESSION_NOT_FOUND"}`, 400)
 			return
 		}
 
 		plaintext, err := hpke.Open(req.Ct, responseKey)
 		if err != nil {
+			log.Printf("[HPKE        ] 解密失败: %v", err)
 			http.Error(w, fmt.Sprintf(`{"error":"DECRYPT_FAILED","message":%q}`, err.Error()), 400)
 			return
 		}
+		log.Printf("[HPKE        ] 解密成功 plaintext_len=%d", len(plaintext))
+
 		var messages []ChatMessage
 		if err := json.Unmarshal(plaintext, &messages); err != nil {
+			log.Printf("[HTTP        ] 消息解析失败: %v", err)
 			http.Error(w, fmt.Sprintf(`{"error":"BAD_JSON","message":%q}`, err.Error()), 400)
 			return
 		}
+		log.Printf("[HTTP        ] 收到消息数=%d", len(messages))
 
 		prompt := buildPrompt(messages)
-		log.Printf("收到加密请求，prompt 长度: %d 字符", len(prompt))
+		if systemPrompt != "" {
+			log.Printf("[HTTP        ] 系统提示词已注入 len=%d", len(systemPrompt))
+		}
 
 		w.Header().Set("Content-Type", "application/x-ndjson")
 		w.Header().Set("Transfer-Encoding", "chunked")
@@ -257,14 +292,15 @@ func main() {
 
 		flusher, ok := w.(http.Flusher)
 		if !ok {
+			log.Printf("[HTTP   ERR] streaming 不支持")
 			http.Error(w, "streaming not supported", 500)
 			return
 		}
 
-		log.Printf("调用 LLM Stream，prompt 长度: %d", len(prompt))
+		log.Printf("[LLM         ] 调用 LLM prompt_len=%d", len(prompt))
 		err = func() error {
 			if useMockLLM {
-				// Mock 流式响应
+				log.Printf("[LLM         ] Mock LLM 模式")
 				mockResp := "这是一条来自 Nitro Enclave 的加密回复。你的消息已安全解密并处理。"
 				for i := 0; i < len(mockResp); i += 5 {
 					end := i + 5
@@ -289,12 +325,16 @@ func main() {
 			})
 		}()
 		if err != nil {
-			log.Printf("LLM 流式错误: %v", err)
+			log.Printf("[LLM         ] LLM 流式错误: %v", err)
+		} else {
+			log.Printf("[LLM         ] LLM 流正常结束")
 		}
+		log.Printf("[HTTP   OUT] /chat 完成")
 	})
 
 	// ── GET /health ────────────────────────────────────────────
 	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		log.Printf("[HTTP   IN ] GET /health")
 		if r.Method != http.MethodGet {
 			http.Error(w, `{"error":"METHOD_NOT_ALLOWED"}`, 405)
 			return
@@ -303,6 +343,8 @@ func main() {
 		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 	})
 
+	log.Printf("═══════════════════════════════════════")
 	log.Printf("启动: http://localhost:%s", port)
+	log.Printf("═══════════════════════════════════════")
 	log.Fatal(http.ListenAndServe(":"+port, nil))
 }
