@@ -1,0 +1,35 @@
+# Dockerfile.backend.arm - ARM64 only: pre-compiled binary, no builder stage
+#
+# 步骤 1: 本地交叉编译 ARM64 binary
+#   cd backend && GOOS=linux GOARCH=arm64 GOPROXY=https://goproxy.cn,direct \
+#     go build -ldflags="-s -w" -o backend .
+#
+# 步骤 2: 构建 ARM64 镜像
+#   docker buildx build --platform linux/arm64 \
+#          -f Dockerfile.backend.arm -t tpm-backend:arm64 .
+#
+# NOTE: x86_64 使用 Dockerfile.backend
+
+FROM alpine:3.19
+
+RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories && \
+    apk add --no-cache ca-certificates tzdata
+
+WORKDIR /app
+
+COPY backend/backend ./backend
+
+ENV PORT=8000
+ENV TPM_DEVICE=/dev/tpm0
+ENV KEY_PATH=/var/lib/backend/enclave-key.json
+ENV LLM_BASE_URL=http://localhost:8080
+ENV LLM_MODEL=qwen3.5
+ENV PCR_INDICES=
+ENV PCR_GOLDEN_BASELINE=
+
+EXPOSE 8000
+
+RUN addgroup -S backend && adduser -S backend -G backend
+USER backend
+
+CMD ["./backend"]
