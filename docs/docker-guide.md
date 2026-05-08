@@ -305,6 +305,40 @@ docker exec my-container curl -s http://baidu.com
 # 如果 apt-get 装不了东西，换 pip 或用多阶段构建
 ```
 
+### Q: ARM 镜像在 ARM 节点上报错（exit code 255）？
+**症状**：镜像标签写的是 arm64，但 `crictl inspecti <镜像>` 输出 `architecture：amd64`，容器启动报 255。
+
+**根因**：`docker buildx build --platform linux/arm64` 默认会生成 **SLSA provenance attestation**，导致导出的 OCI manifest 里 platform 元数据被搞乱——config 层写的是 arm64，但 manifest 层标注成了 amd64。containerd/crictl 检查的是 manifest 层级的 platform，所以会认为这是 amd64 镜像。
+
+**解决方案**：构建时加 `--provenance=false --sbom=false` 禁用 provenance：
+
+```bash
+# ❌ 错误（会生成错误的 manifest platform）
+docker buildx build --platform linux/arm64 -f Dockerfile.llm -t tpm-llm:arm64 --load .
+
+# ✅ 正确
+docker buildx build --platform linux/arm64 \
+  --provenance=false --sbom=false \
+  -f Dockerfile.llm -t tpm-llm:arm64 --load .
+```
+
+**验证镜像架构**（三步确认）：
+```bash
+# 1. docker inspect 查看 metadata
+docker inspect tpm-llm:arm64 | grep Architecture
+# 输出: "Architecture": "arm64"
+
+# 2. 用 QEMU 模拟运行 uname（确认二进制也是 arm64）
+docker run --rm --platform linux/arm64 --entrypoint sh tpm-llm:arm64 -c "uname -m"
+# 输出: aarch64
+
+# 3. containerd 环境下验证（在目标节点执行）
+crictl inspecti <镜像名:tag> | grep -i architecture
+# 输出: architecture：arm64
+```
+
+**注意**：三个镜像（backend、llm、frontend）都需要加这两个参数，否则都可能出现同样的问题。
+
 ## 8. 进阶：K8s 部署
 
 ```bash
