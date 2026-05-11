@@ -334,6 +334,23 @@ body {
   white-space: nowrap;
 }
 
+/* 不可信状态：技术详情整体变红灰系 */
+.badge-untrusted .pcr-body {
+  border-top-color: rgba(239, 68, 68, 0.15);
+}
+
+.badge-untrusted .pcr-row + .pcr-row {
+  border-top-color: rgba(239, 68, 68, 0.1);
+}
+
+.badge-untrusted .pcr-index {
+  color: #dc2626;
+}
+
+.badge-untrusted .pcr-hash {
+  color: #991b1b;
+}
+
 .pcr-status--match {
   color: #22c55e;
 }
