@@ -77,15 +77,20 @@ export default function AttestationBadge({ attestation, loading = false, error =
     );
   }
 
-  const isTrusted = attestation.trusted;
-  const publicKeyShort = attestation.publicKey
-    ? `${attestation.publicKey.slice(0, 12)}...${attestation.publicKey.slice(-8)}`
-    : null;
-
   // 前端独立校验黄金基准线
   const goldenBaseline = parseGoldenBaseline();
   const hasBaseline = Object.keys(goldenBaseline).length > 0;
   const clientStatus = hasBaseline ? validatePcrs(attestation.pcrs ?? {}, goldenBaseline) : {};
+
+  // 有基准线时，任意一个 PCR 不匹配 → 不可信
+  const pcrAllMatch = hasBaseline
+    ? Object.values(clientStatus).every((s) => s === 'match')
+    : true;
+  const isTrusted = attestation.trusted && pcrAllMatch;
+
+  const publicKeyShort = attestation.publicKey
+    ? `${attestation.publicKey.slice(0, 12)}...${attestation.publicKey.slice(-8)}`
+    : null;
 
   return (
     <div className={`badge ${isTrusted ? 'badge-trusted' : 'badge-untrusted'}`}>
@@ -97,7 +102,7 @@ export default function AttestationBadge({ attestation, loading = false, error =
         <span className="badge-detail">
           {isTrusted ? t.badge.trustedDesc : t.badge.untrustedDesc}
         </span>
-        {isTrusted && publicKeyShort && (
+        {publicKeyShort && (
           <details className="pcr-details">
             <summary className="pcr-summary">
               <span className="pcr-summary-icon">🔐</span>
