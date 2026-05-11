@@ -1,32 +1,24 @@
 services:
   # ── LLM ──────────────────────────────────────────────────────────────
   llm:
-    build:
-      context: .
-      dockerfile: Dockerfile.llm
+    image: tpm-llm:arm64
     container_name: tpm-app-llm
     shm_size: "2g"
     restart: unless-stopped
 
   # ── Backend ──────────────────────────────────────────────────────────
   backend:
-    build:
-      context: .
-      dockerfile: Dockerfile.backend
+    image: tpm-backend:arm64
     container_name: tpm-app-backend
     ports:
       - "8000:8000"
     environment:
       PORT: "8000"
-      # Mock 模式（无真实 TPM 时开启）
       USE_MOCK_TPM: "true"
-      # PCR indices（逗号分隔），mock 模式下任意
       PCR_INDICES: "1,4"
       PCR_GOLDEN_BASELINE: "1:sha256:mock_pcr1_value_for_demo;4:sha256:mock_pcr4_value_for_demo"
-      # LLM 地址（llm 服务在 docker compose 内部可达）
       LLM_BASE_URL: http://llm:8080/v1/chat/completions
       LLM_MODEL: qwen3.5
-      # mock LLM 直接返回假回答，用于无 GPU 环境开发调试
       USE_MOCK_LLM: "false"
     depends_on:
       - llm
@@ -34,15 +26,12 @@ services:
 
   # ── Frontend ────────────────────────────────────────────────────────
   frontend:
-    build:
-      context: .
-      dockerfile: Dockerfile.frontend
+    image: tpm-frontend:arm64
     container_name: tpm-app-frontend
     ports:
       - "3000:3000"
     environment:
       BACKEND_URL: http://backend:8000
-      # mock 模式 golden baseline（与后端 mock PCR 值对应）
       NEXT_PUBLIC_PCR_GOLDEN_BASELINE: 1:sha256:mock_pcr1_value_for_demo,4:sha256:mock_pcr4_value_for_demo
     depends_on:
       - backend

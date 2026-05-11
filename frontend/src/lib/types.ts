@@ -11,7 +11,9 @@ export interface AttestationDoc {
 export interface AttestationResponse {
   trusted: boolean;
   publicKey: string | null;
-  attestation: AttestationDoc | null;
+  pcrs: Record<string, string>;
+  pcrStatus: Record<string, string>; // index → "match" | "mismatch" | "missing"
+  mock: boolean;
 }
 
 // === Key Exchange ===

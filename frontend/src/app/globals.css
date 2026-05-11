@@ -317,6 +317,34 @@ body {
   line-height: 1.5;
 }
 
+/* PCR 基准线匹配状态 */
+.pcr-status {
+  font-size: 9px;
+  font-weight: 600;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.pcr-status--match {
+  color: #22c55e;
+}
+
+.pcr-status--mismatch {
+  color: #ef4444;
+}
+
+.pcr-status--missing {
+  color: #f59e0b;
+}
+
+.pcr-baseline-hint {
+  font-size: 8px;
+  color: #6b7280;
+  margin-top: 6px;
+  padding-top: 4px;
+  border-top: 1px dashed rgba(107, 114, 128, 0.2);
+}
+
 /* ============ Chat Panel ============ */
 
 .chat-panel {

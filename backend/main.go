@@ -24,6 +24,7 @@ import (
 
 type AttestationResponse struct {
 	PCRs      map[string]string `json:"pcrs"`
+	PcrStatus map[string]string `json:"pcrStatus"` // index → "match" | "mismatch" | "missing"
 	PublicKey string            `json:"publicKey"`
 	Trusted   bool              `json:"trusted"`
 	Mock      bool              `json:"mock"`
@@ -163,24 +164,34 @@ func main() {
 			}
 			pcrs = pcrMap
 			publicKey = hpke.BytesToBase64(kp.PublicKey)
+		}
 
-			if len(goldenBaseline) > 0 {
-				for idx, golden := range goldenBaseline {
-					idxStr := fmt.Sprintf("%d", idx)
-					if got, ok := pcrs[idxStr]; ok && got != golden {
+	// ── PCR 黄金基准线对比（mock 和真实模式共用） ──────────────────
+		pcrStatus := make(map[string]string)
+		if len(goldenBaseline) > 0 {
+			for idx, golden := range goldenBaseline {
+				idxStr := fmt.Sprintf("%d", idx)
+				if got, ok := pcrs[idxStr]; ok {
+					if got == golden {
+						pcrStatus[idxStr] = "match"
+					} else {
+						pcrStatus[idxStr] = "mismatch"
 						log.Printf("[TPM         ] 警告: PCR%d 不匹配 — 收到 %s，期望 %s", idx, got, golden)
 					}
+				} else {
+					pcrStatus[idxStr] = "missing"
 				}
 			}
 		}
 
 		resp := AttestationResponse{
-			PCRs:      pcrs,
-			PublicKey: publicKey,
-			Trusted:   len(kp.PublicKey) > 0,
-			Mock:      mock,
-		}
-		log.Printf("[HTTP   OUT] /attestation trusted=%v mock=%v pcrs=%v", resp.Trusted, resp.Mock, len(resp.PCRs))
+		PCRs:      pcrs,
+		PcrStatus: pcrStatus,
+		PublicKey: publicKey,
+		Trusted:   len(kp.PublicKey) > 0,
+		Mock:      mock,
+	}
+	log.Printf("[HTTP   OUT] /attestation trusted=%v mock=%v pcrs=%v", resp.Trusted, resp.Mock, len(resp.PCRs))
 		json.NewEncoder(w).Encode(resp)
 	})
 

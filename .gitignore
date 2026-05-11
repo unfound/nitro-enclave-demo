@@ -22,3 +22,4 @@ backend/backend
 models/*.gguf
 backend/go.sum
 tsconfig.tsbuildinfo
+arm64-release/images.tar.gz
