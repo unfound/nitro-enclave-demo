@@ -32,7 +32,7 @@ services:
       - "3000:3000"
     environment:
       BACKEND_URL: http://backend:8000
-      NEXT_PUBLIC_PCR_GOLDEN_BASELINE: 1:sha256:mock_pcr1_value_for_demo,4:sha256:mock_pcr4_value_for_demo
+      NEXT_PUBLIC_PCR_GOLDEN_BASELINE: "1:sha256:mock_pcr1_value_for_demo;4:sha256:mock_pcr4_value_for_demo"
     depends_on:
       - backend
     restart: unless-stopped

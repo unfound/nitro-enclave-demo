@@ -2,15 +2,15 @@ export type Lang = 'zh' | 'en';
 
 const zh = {
   app: {
-    title: '机密运动健康助手',
-    subtitle: 'AWS Nitro Enclave · 端到端加密保护',
-    footer: '技术演示 — 非医疗建议。生产环境中，敏感数据仅在 Nitro Enclave 内解密。',
+    title: '华为运动健康助手',
+    subtitle: '端到端加密保护',
+    footer: '技术演示 — 非医疗建议',
   },
   badge: {
     trusted: '可信环境已认证',
-    trustedDesc: '服务运行在 AWS Nitro Enclave 中，数据端到端加密保护',
+    trustedDesc: 'TPM验证通过，数据端到端加密保护',
     untrusted: '未在可信环境运行',
-    untrustedDesc: '服务未运行在安全飞地中，无法处理加密数据',
+    untrustedDesc: '服务未运行在TPM节点上，无法处理加密数据',
     loading: '正在验证环境...',
     loadingDesc: '检查服务可信状态',
     error: '认证失败',
@@ -45,15 +45,15 @@ const zh = {
 
 const en: typeof zh = {
   app: {
-    title: 'Confidential Health Assistant',
-    subtitle: 'AWS Nitro Enclave · End-to-End Encryption',
-    footer: 'Technical demo — not medical advice. In production, sensitive data is only decrypted inside Nitro Enclave.',
+    title: 'Huawei Health Assistant',
+    subtitle: 'End-to-End Encryption',
+    footer: 'Technical demo — not medical advice',
   },
   badge: {
     trusted: 'Trusted Environment Verified',
-    trustedDesc: 'Service runs in AWS Nitro Enclave, data protected by end-to-end encryption',
+    trustedDesc: 'TPM verification passed, data protected by end-to-end encryption',
     untrusted: 'Not in Trusted Environment',
-    untrustedDesc: 'Service is not running in a secure enclave, cannot process encrypted data',
+    untrustedDesc: 'Service is not running in a TPM node, cannot process encrypted data',
     loading: 'Verifying Environment...',
     loadingDesc: 'Checking service trust status',
     error: 'Verification Failed',
