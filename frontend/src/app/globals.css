@@ -229,6 +229,12 @@ body {
   backdrop-filter: blur(4px);
 }
 
+/* 不可信状态：技术详情框变红灰系 */
+.badge-untrusted .pcr-details {
+  border-color: rgba(239, 68, 68, 0.25);
+  background: rgba(239, 68, 68, 0.04);
+}
+
 .pcr-summary {
   display: flex;
   align-items: center;
