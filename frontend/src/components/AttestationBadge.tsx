@@ -110,8 +110,7 @@ export default function AttestationBadge({ attestation, loading = false, error =
                 <code className="pcr-hash">{attestation.publicKey}</code>
               </div>
               {Object.entries(attestation.pcrs ?? {}).map(([idx, val]) => {
-                // 优先用前端独立校验结果，fallback 到后端返回的 pcrStatus
-                const status = clientStatus[idx] ?? attestation.pcrStatus?.[idx];
+                const status = clientStatus[idx];
                 return (
                   <div key={idx} className="pcr-row">
                     <span className="pcr-index">PCR{idx}</span>
