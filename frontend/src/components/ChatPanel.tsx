@@ -21,6 +21,7 @@ import {
 interface Props {
   attestation: AttestationResponse | null;
   attestationError?: boolean;
+  pcrValid?: boolean;
 }
 
 interface EncryptedSession {
@@ -28,7 +29,7 @@ interface EncryptedSession {
   responseKey: Uint8Array;
 }
 
-export default function ChatPanel({ attestation, attestationError = false }: Props) {
+export default function ChatPanel({ attestation, attestationError = false, pcrValid = true }: Props) {
   const { t } = useLang();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
@@ -37,7 +38,7 @@ export default function ChatPanel({ attestation, attestationError = false }: Pro
   const [session, setSession] = useState<EncryptedSession | null>(null);
   const messagesEnd = useRef<HTMLDivElement>(null);
 
-  const attestationFailed = (attestation !== null && !attestation.trusted) || attestationError;
+  const attestationFailed = (attestation !== null && !attestation.trusted) || attestationError || !pcrValid;
   const attestationLoading = attestation === null;
 
   useEffect(() => {
