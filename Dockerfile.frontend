@@ -31,8 +31,9 @@ ENV PORT=3000
 
 # 后端地址（K8s 部署时替换为 backend-svc）
 ENV NEXT_PUBLIC_API_BASE=http://localhost:8000
-# Mock 模式 golden baseline（真实部署时替换）
-ENV NEXT_PUBLIC_PCR_GOLDEN_BASELINE=1:sha256:mock_pcr1_value_for_demo,4:sha256:mock_pcr4_value_for_demo
+# 黄金基准线（服务端运行时读取，非 NEXT_PUBLIC 构建时变量）
+# 格式: "idx:sha256:val,idx:sha256:val"，如 "1:sha256:abc,4:sha256:def"
+# ENV PCR_GOLDEN_BASELINE=1:sha256:mock_pcr1_value_for_demo,4:sha256:mock_pcr4_value_for_demo
 
 EXPOSE 3000
 

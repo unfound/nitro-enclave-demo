@@ -177,8 +177,9 @@ tpm-app/
 | 变量 | 说明 |
 |------|------|
 | `NEXT_PUBLIC_API_BASE` | 后端服务地址，如 `http://backend-svc:8000` |
-| `NEXT_PUBLIC_PCR_GOLDEN_BASELINE` | 黄金基线，格式同 backend |
-| `NEXT_PUBLIC_PCR_INDICES` | 要验证的 PCR 索引，如 `1,4` |
+| `PCR_GOLDEN_BASELINE` | 黄金基准线，格式同 backend，Next.js 服务端运行时读取用于前端独立校验 |
+
+> **注意：** `PCR_GOLDEN_BASELINE` 是服务端变量，前端通过 Next.js API route 运行时读取，不依赖构建时 `NEXT_PUBLIC_*`。
 
 ## 华为云 QingTian TPM 约束
 

@@ -135,10 +135,12 @@ docker buildx build --platform linux/arm64 \
 | 变量 | 必填 | 默认值 | 说明 |
 |------|------|--------|------|
 | `BACKEND_URL` | **是** | `http://localhost:8000` | Backend 服务地址（容器内访问时用 K8s Service DNS） |
+| `PCR_GOLDEN_BASELINE` | 否 | 空 | 黄金基准线，格式 `idx:sha256:val,idx:sha256:val`，Next.js 服务端运行时读取用于前端独立校验 |
 | `NEXT_PUBLIC_API_BASE` | 否 | `http://localhost:8000` | 同 BACKEND，供客户端使用 |
-| `NEXT_PUBLIC_PCR_GOLDEN_BASELINE` | 否 | mock 值 | 前端页面显示用的 baseline，格式 `1:sha256:...` |
 | `NODE_ENV` | 否 | `production` | 固定为 `production` |
 | `PORT` | 否 | `3000` | 服务端口 |
+
+> **注意：** `PCR_GOLDEN_BASELINE` 是服务端环境变量（非 `NEXT_PUBLIC_*`），Next.js API route 在运行时读取。前端通过 `/api/attestation` 获取后端 PCR 值后，由 Next.js 服务端独立完成校验，不信任后端返回的 `pcrStatus`。
 
 ### LLM (`tpm-llm`)
 
@@ -382,8 +384,8 @@ spec:
               value: http://tpm-backend:8000
             - name: NODE_ENV
               value: production
-            # Mock 模式的 golden baseline（生产时替换为真实值）
-            - name: NEXT_PUBLIC_PCR_GOLDEN_BASELINE
+            # 黄金基准线（Next.js 服务端运行时读取，前端独立校验用）
+            - name: PCR_GOLDEN_BASELINE
               value: "1:sha256:mock_pcr1_value_for_demo,4:sha256:mock_pcr4_value_for_demo"
           livenessProbe:
             httpGet:

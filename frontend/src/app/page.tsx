@@ -6,24 +6,6 @@ import AttestationBadge from '@/components/AttestationBadge';
 import ChatPanel from '@/components/ChatPanel';
 import type { AttestationResponse } from '@/lib/types';
 
-/**
- * 解析黄金基准线并校验 PCR 值
- * 返回 true 表示所有 PCR 都匹配（或没有基准线）
- */
-function checkPcrValid(pcrs: Record<string, string> | undefined): boolean {
-  const raw = process.env.NEXT_PUBLIC_PCR_GOLDEN_BASELINE;
-  if (!raw || !pcrs) return true;
-  for (const pair of raw.split(';')) {
-    const idx = pair.indexOf(':');
-    if (idx > 0) {
-      const key = pair.slice(0, idx).trim();
-      const expected = pair.slice(idx + 1).trim();
-      if (key && expected && pcrs[key] !== expected) return false;
-    }
-  }
-  return true;
-}
-
 function useCurrentTime() {
   const [time, setTime] = useState('');
 
@@ -88,7 +70,7 @@ function AppContent() {
           </section>
 
           <section className="chat-section">
-            <ChatPanel attestation={attestation} attestationError={attestationError} pcrValid={checkPcrValid(attestation?.pcrs)} />
+            <ChatPanel attestation={attestation} attestationError={attestationError} pcrValid={attestation?.trusted ?? true} />
           </section>
 
           <footer className="app-footer">
